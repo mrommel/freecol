@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -19,25 +19,29 @@
 
 package net.sf.freecol.common.resources;
 
+import static net.sf.freecol.common.util.CollectionUtils.find;
+import static net.sf.freecol.common.util.CollectionUtils.first;
+import static net.sf.freecol.common.util.ImageUtils.createGrayscaleImage;
+import static net.sf.freecol.common.util.ImageUtils.createResizedImage;
+import static net.sf.freecol.common.util.ImageUtils.wildcardDimension;
+
 import java.awt.Dimension;
 import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-import java.awt.color.ColorSpace;
+import java.awt.GraphicsEnvironment;
+import java.awt.Transparency;
 import java.awt.image.BufferedImage;
-import java.awt.image.ColorConvertOp;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Random;
 import java.util.function.Predicate;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import javax.imageio.ImageIO;
-
-import static net.sf.freecol.common.util.CollectionUtils.*;
 
 
 /**
@@ -50,11 +54,13 @@ public class ImageResource extends Resource {
 
     /** Comparator to compare buffered images by ascending size. */
     private static final Comparator<BufferedImage> biComp
-        = Comparator.<BufferedImage>comparingInt(bi -> bi.getWidth() * bi.getHeight());
+        = Comparator.<BufferedImage>comparingInt(bi ->
+            bi.getWidth() * bi.getHeight());
 
     private volatile BufferedImage image = null;
     private List<URI> alternativeLocators = null;
     private List<BufferedImage> loadedImages = null;
+    private List<ImageResource> variations = new ArrayList<>();
 
 
     /**
@@ -78,6 +84,22 @@ public class ImageResource extends Resource {
             this.alternativeLocators = new ArrayList<>();
         this.alternativeLocators.add(uri);
     }
+    
+    public synchronized void addVariation(ImageResource imageResource) {
+        this.variations.add(imageResource);
+    }
+    
+    /**
+     * Adds another URIs for loading a differently sized version of the image.
+     * Only use before preload got called!
+     *
+     * @param uris A {@code List} of {@code URI}s used when loading.
+     */
+    public synchronized void addAlternativeResourceLocators(List<URI> uris) {
+        if (this.alternativeLocators == null)
+            this.alternativeLocators = new ArrayList<>();
+        this.alternativeLocators.addAll(uris);
+    }
 
     /**
      * Gets the {@code Image} represented by this resource.
@@ -91,7 +113,38 @@ public class ImageResource extends Resource {
         }
         return this.image;
     }
-
+    
+    public int getVariationNumberForSeed(int seed) {
+        return new Random(seed).nextInt(variations.size() + 1);
+    }
+    
+    public int getVariationNumberForTick(long ticks) {
+        return (int) (ticks % (variations.size() + 1));
+    }
+    
+    public ImageResource getVariation(int variationNumber) {
+        if (variations.isEmpty()) {
+            return this;
+        }
+        
+        if (variationNumber >= variations.size()) {
+            return this;
+        }
+        return variations.get(variationNumber);
+    }
+    
+    
+    /**
+     * Gets the image using the specified dimension and choice of grayscale.
+     * 
+     * @param d The {@code Dimension} of the requested image.
+     * @param grayscale If true return a grayscale image.
+     * @return The scaled {@code BufferedImage}.
+     */
+    public BufferedImage getImage(int variation, Dimension d, boolean grayscale) {
+        return (grayscale) ? getVariation(variation).getGrayscaleImage(d) : getVariation(variation).getColorImage(d);
+    }
+    
     /**
      * Gets the image using the specified dimension and choice of grayscale.
      * 
@@ -122,95 +175,65 @@ public class ImageResource extends Resource {
 
     /**
      * Gets the image using the specified dimension.
+     *
+     * Rescaling will be performed if necessary.
      * 
-     * @param d The {@code Dimension} of the requested image.
-     *     Rescaling will be performed if necessary.
+     * @param siz The {@code Dimension} of the requested image.
      * @return The {@code BufferedImage} with the required dimension.
      */
-    private BufferedImage getColorImage(Dimension d) {
-        BufferedImage im = getImage();
-        if (im == null) return null; // Preload failed
-        
-        int wNew = d.width;
-        int hNew = d.height;
-        if (wNew < 0 && hNew < 0) return im; // Wildcard dimensions
-
-        int w = im.getWidth();
-        int h = im.getHeight();
-        if (wNew < 0 || (!(hNew < 0) && wNew*h > w*hNew)) {
-            wNew = (2*w*hNew + (h+1)) / (2*h);
-        } else if (hNew < 0 || wNew*h < w*hNew) {
-            hNew = (2*h*wNew + (w+1)) / (2*w);
-        }
-        if (wNew == w && hNew == h) return im; // Matching dimension
+    private BufferedImage getColorImage(Dimension siz) {
+        BufferedImage img = getImage();
+        if (img == null) return null; // Preload failed
+        int w = img.getWidth();
+        int h = img.getHeight();
+        Dimension dNew = wildcardDimension(siz, new Dimension(w, h));
+        int wNew = dNew.width, hNew = dNew.height;
+        if (wNew == w && hNew == h) return img; // Matching dimension
 
         if (this.haveAlternatives()) {
             final int fwNew = wNew, fhNew = hNew;
-            final Predicate<BufferedImage> sizePred = img ->
-                img.getWidth() >= fwNew && img.getHeight() >= fhNew;
-            im = findLoadedImage(sizePred);
-            w = im.getWidth();
-            h = im.getHeight();
-            if (wNew*h > w*hNew) {
-                wNew = (2*w*hNew + (h+1)) / (2*h);
-            } else if (wNew*h < w*hNew) {
-                hNew = (2*h*wNew + (w+1)) / (2*w);
-            }
-            if (wNew == w && hNew == h) return im; // Found loaded image
+            final Predicate<BufferedImage> sizePred = i ->
+                i.getWidth() >= fwNew && i.getHeight() >= fhNew;
+            img = findLoadedImage(sizePred);
+            w = img.getWidth();
+            h = img.getHeight();
+            dNew = wildcardDimension(siz, new Dimension(w, h));
+            wNew = dNew.width;
+            hNew = dNew.height;
+            if (wNew == w && hNew == h) return img; // Found loaded image
         }
 
-        // Directly scaling to less than half size would ignore some pixels.
-        // Prevent that by halving the base image size as often as needed.
-        while (wNew*2 <= w && hNew*2 <= h) {
-            w = (w+1)/2;
-            h = (h+1)/2;
-            BufferedImage halved = new BufferedImage(w, h,
-                BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = halved.createGraphics();
-            // For halving bilinear should most correctly average 2x2 pixels.
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
-                RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g.drawImage(im, 0, 0, w, h, null);
-            g.dispose();
-            im = halved;
-        }
+        /*
+         * Tileable images should not be scaled with interpolation, as this will produce
+         * partially transparent pixels. These pixels will overlap and make visible
+         * seams when tiling images.
+         * 
+         * Do NOT use:
+         *  // Directly scaling to less than half size would ignore some pixels.
+         *  // Prevent that by halving the base image size as often as needed.
+         *  while (wNew*2 <= w && hNew*2 <= h) {
+         *      img = createHalvedImage(img);
+         *      w = img.getWidth();
+         *      h = img.getHeight();
+         *  }
+         */
 
+        // Do a final resize
         if (wNew != w || hNew != h) {
-            BufferedImage scaled = new BufferedImage(wNew, hNew,
-                BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = scaled.createGraphics();
-            // Bicubic should give best quality for odd scaling factors.
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
-                RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            g.drawImage(im, 0, 0, wNew, hNew, null);
-            g.dispose();
-            im = scaled;
+            img = createResizedImage(img, wNew, hNew);
         }
-        return im;
+        return img;
     }
 
     /**
      * Gets a grayscale version of the image of the given size.
      * 
-     * @param d The requested size.
+     * @param siz The {@code Dimension} of the requested image.
      * @return The {@code BufferedImage}.
      */
-    private BufferedImage getGrayscaleImage(Dimension d) {
-        final BufferedImage im = getColorImage(d); // Get the scaled image
-        if (im == null) return null;
-
-        int width = im.getWidth();
-        int height = im.getHeight();
-        // TODO: Find out why making a copy is necessary here to prevent
-        //       images from getting too dark.
-        BufferedImage srcImage = new BufferedImage(width, height,
-            BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = srcImage.createGraphics();
-        g.drawImage(im, 0, 0, null);
-        g.dispose();
-        ColorConvertOp filter = new ColorConvertOp(
-            ColorSpace.getInstance(ColorSpace.CS_GRAY), null);
-        return filter.filter(srcImage, null);
+    private BufferedImage getGrayscaleImage(Dimension siz) {
+        final BufferedImage img = getColorImage(siz); // Get the scaled image
+        return createGrayscaleImage(img);
     }
 
     /**
@@ -232,6 +255,9 @@ public class ImageResource extends Resource {
                     this.image = first(this.loadedImages);
                 }
             }
+            for (ImageResource variation : variations) {
+                variation.preload();
+            }
         }
     }
 
@@ -245,12 +271,33 @@ public class ImageResource extends Resource {
         try {
             URL url = uri.toURL();
             BufferedImage image = ImageIO.read(url);
-            if (image != null) return image;
-            logger.log(Level.WARNING, "Failed to read image from: " + uri);
+            
+            if (image == null) {
+                logger.log(Level.WARNING, "Failed to read image from: " + uri);
+                return null;
+            }
+
+            if (canUseBitmask(uri)) {
+                final BufferedImage compatibleImage = GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice().getDefaultConfiguration()
+                        .createCompatibleImage(image.getWidth(), image.getHeight(), Transparency.BITMASK);
+                final Graphics2D g = compatibleImage.createGraphics();
+                g.drawImage(image, 0, 0, null);
+                g.dispose();
+                return compatibleImage;
+            } else {
+                return image;
+            }
+
         } catch (IOException ioe) {
             logger.log(Level.WARNING, "Exception to loading image from: "
                 + uri, ioe);
         }
         return null;
+    }
+
+
+    private static boolean canUseBitmask(URI uri) {
+        /* TODO: Better method for determining images that can use a bitmask. */
+        return uri.toString().contains("center") && !uri.toString().contains("mask");
     }
 }

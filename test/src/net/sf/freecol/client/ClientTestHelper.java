@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019  The FreeCol Team
+ *  Copyright (C) 2002-2022  The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -40,7 +40,8 @@ public class ClientTestHelper {
 
     private static FreeColClient client = null;
 
-    public static FreeColClient startClient(FreeColServer freeColServer, Specification specification) {
+    public static FreeColClient startClient(FreeColServer freeColServer,
+                                            Specification specification) {
         // This is not ideal, but headless mode allows cutting off
         // some excessive resource loading, especially in the sound
         // tests where the resource manager is exercised.
@@ -52,18 +53,16 @@ public class ClientTestHelper {
         Messages.loadMessageBundle(FreeCol.getLocale());
 
         logger.info("Debug value: " + FreeColDebugger.isInDebugMode());
-
-        client = FreeColClient.startTestClient(specification);
+        client = FreeCol.startTestClient(specification);
         assertNotNull(client);
 
         ConnectController connectController = client.getConnectController();
         client.setFreeColServer(freeColServer);
         client.setSinglePlayer(true);
 
-        assertTrue(connectController.requestLogin("test",
-                   freeColServer.getHost(),
-                   freeColServer.getPort()));
-
+        boolean ok = connectController.requestLogin("test",
+            freeColServer.getHost(), freeColServer.getPort());
+        assertTrue("test login", ok);
         connectController.startSinglePlayerGame(specification);
         return client;
     }

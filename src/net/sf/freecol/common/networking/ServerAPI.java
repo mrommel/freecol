@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -201,7 +201,6 @@ public abstract class ServerAPI {
             }
         }
         return false;
-                
     }
 
 

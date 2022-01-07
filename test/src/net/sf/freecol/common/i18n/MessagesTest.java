@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019  The FreeCol Team
+ *  Copyright (C) 2002-2022  The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -160,7 +160,7 @@ public class MessagesTest extends FreeColTestCase {
 
     public void testStringTemplates() {
         final Game game = getGame();
-        game.setMap(getTestMap());
+        game.changeMap(getTestMap());
 
         Messages.loadMessageBundle(Locale.US);
         // template with key not in message bundle

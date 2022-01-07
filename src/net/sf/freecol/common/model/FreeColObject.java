@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -241,7 +241,7 @@ public abstract class FreeColObject
         }
         int cmp = fco1.getIdType().compareTo(fco2.getIdType());
         return (cmp > 0) ? 1 : (cmp < 0) ? -1
-            : Utils.compareTo(fco1.getIdNumber(), fco2.getIdNumber());
+            : Integer.compare(fco1.getIdNumber(), fco2.getIdNumber());
     }
 
     /**

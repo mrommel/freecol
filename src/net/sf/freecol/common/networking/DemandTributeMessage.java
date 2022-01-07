@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -32,6 +32,7 @@ import net.sf.freecol.common.model.Unit;
 import net.sf.freecol.common.model.Unit.MoveType;
 import net.sf.freecol.server.FreeColServer;
 import net.sf.freecol.server.model.ServerPlayer;
+import net.sf.freecol.server.model.ServerUnit;
 
 
 /**
@@ -130,6 +131,6 @@ public class DemandTributeMessage extends AttributeMessage {
 
         // Do the demand
         return igc(freeColServer)
-            .demandTribute(serverPlayer, unit, is);
+            .demandTribute(serverPlayer, (ServerUnit)unit, is);
     }
 }

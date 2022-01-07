@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -107,9 +107,10 @@ public class CargoPanel extends FreeColPanel
         removeAll();
 
         if (carrier != null) {
-            DragListener dl = new DragListener(getFreeColClient(), this);
+            final FreeColClient fcc = getFreeColClient();
+            DragListener dl = new DragListener(fcc, this);
             for (Unit unit : carrier.getUnitList()) {
-                UnitLabel label = new UnitLabel(getFreeColClient(), unit);
+                UnitLabel label = new UnitLabel(fcc, unit);
                 if (isEditable()) {
                     label.setTransferHandler(defaultTransferHandler);
                     label.addMouseListener(dl);
@@ -118,7 +119,7 @@ public class CargoPanel extends FreeColPanel
             }
 
             for (Goods g : carrier.getGoodsList()) {
-                GoodsLabel label = new GoodsLabel(getGUI(), g);
+                GoodsLabel label = new GoodsLabel(fcc, g);
                 if (isEditable()) {
                     label.setTransferHandler(defaultTransferHandler);
                     label.addMouseListener(dl);
@@ -182,14 +183,6 @@ public class CargoPanel extends FreeColPanel
      * {@inheritDoc}
      */
     @Override
-    public boolean accepts(Unit unit) {
-        return carrier != null && carrier.canAdd(unit);
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
     public boolean accepts(Goods goods) {
         return carrier != null && carrier.canAdd(goods);
     }
@@ -198,16 +191,19 @@ public class CargoPanel extends FreeColPanel
      * {@inheritDoc}
      */
     @Override
+    public boolean accepts(Unit unit) {
+        return carrier != null && carrier.canAdd(unit);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
     public Component add(Component comp, boolean editState) {
-        if (carrier == null) {
-            return null;
-        } else if (editState && comp instanceof CargoLabel
+        if (carrier != null && comp instanceof CargoLabel && editState
             && ((CargoLabel)comp).addCargo(comp, carrier, this)) {
             return comp;
-        } else {
-            super.add(comp);
         }
-        logger.log(Level.FINER, "Attempted to add a component to an invalid carrier.");
         return null;
     }
 

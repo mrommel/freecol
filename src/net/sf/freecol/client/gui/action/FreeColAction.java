@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -29,6 +29,7 @@ import javax.swing.AbstractAction;
 import javax.swing.Action;
 import javax.swing.ImageIcon;
 import javax.swing.KeyStroke;
+import javax.swing.SwingUtilities;
 import javax.swing.event.MenuKeyEvent;
 import javax.swing.event.MenuKeyListener;
 import javax.xml.stream.XMLStreamException;
@@ -45,6 +46,7 @@ import net.sf.freecol.common.io.FreeColXMLReader;
 import net.sf.freecol.common.io.FreeColXMLWriter;
 import net.sf.freecol.common.model.FreeColObject;
 import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Map;
 import net.sf.freecol.common.option.Option;
 
 
@@ -86,8 +88,9 @@ public abstract class FreeColAction extends AbstractAction
         public void menuKeyPressed(MenuKeyEvent e) {
 
             if (e.getKeyCode() == mnemonic) {
-                ActionEvent ae = new ActionEvent(e.getSource(), e.getID(), (String) getValue(Action.NAME),
-                                                 e.getModifiers());
+                ActionEvent ae = new ActionEvent(e.getSource(), e.getID(),
+                                                 (String) getValue(Action.NAME),
+                                                 e.getModifiersEx());
                 actionPerformed(ae);
 
                 e.consume();
@@ -158,6 +161,16 @@ public abstract class FreeColAction extends AbstractAction
      */
     protected Game getGame() {
         return freeColClient.getGame();
+    }
+
+    /**
+     * Gets the map.
+     *
+     * @return The {@code Map}.
+     */
+    protected Map getMap() {
+        final Game game = getGame();
+        return (game == null) ? null : game.getMap();
     }
 
     /**
@@ -242,17 +255,23 @@ public abstract class FreeColAction extends AbstractAction
      * @param key The identifier of the action.
      */
     protected void addImageIcons(String key) {
-        List<BufferedImage> images = ImageLibrary.getButtonImages(key);
-        orderButtonImageCount = images.size();
-        if (hasOrderButtons()) {
-            putValue(BUTTON_IMAGE, new ImageIcon(images.remove(0)));
-            putValue(BUTTON_ROLLOVER_IMAGE, new ImageIcon(images.remove(0)));
-            putValue(BUTTON_PRESSED_IMAGE, new ImageIcon(images.remove(0)));
-            putValue(BUTTON_DISABLED_IMAGE, new ImageIcon(images.remove(0)));
-        } else {
-            logger.warning("Found only " + orderButtonImageCount
-                + " order button images for " + getId() + "/" + key);
-        }
+        /*
+         * Running this method later so that we are certain images
+         * have been loaded before trying to get them.
+         */
+        SwingUtilities.invokeLater(() -> {
+            List<BufferedImage> images = getGUI().getFixedImageLibrary().getButtonImages(key);
+            orderButtonImageCount = images.size();
+            if (hasOrderButtons()) {
+                putValue(BUTTON_IMAGE, new ImageIcon(images.remove(0)));
+                putValue(BUTTON_ROLLOVER_IMAGE, new ImageIcon(images.remove(0)));
+                putValue(BUTTON_PRESSED_IMAGE, new ImageIcon(images.remove(0)));
+                putValue(BUTTON_DISABLED_IMAGE, new ImageIcon(images.remove(0)));
+            } else {
+                logger.warning("Found only " + orderButtonImageCount
+                    + " order button images for " + getId() + "/" + key);
+            }
+        });
     }
 
     /**
@@ -338,8 +357,8 @@ public abstract class FreeColAction extends AbstractAction
      * {@link #shouldBeEnabled}.
      */
     public void update() {
-        boolean b = shouldBeEnabled();
-        if (isEnabled() != b) setEnabled(b);
+        boolean b = this.shouldBeEnabled();
+        if (this.isEnabled() != b) this.setEnabled(b);
     }
 
 

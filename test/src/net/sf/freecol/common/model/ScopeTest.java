@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019  The FreeCol Team
+ *  Copyright (C) 2002-2022  The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -204,7 +204,7 @@ public class ScopeTest extends FreeColTestCase {
     public void testGameObjects() {
         Game game = getStandardGame();
         Map map = getTestMap();
-        game.setMap(map);
+        game.changeMap(map);
 
         Player dutch = game.getPlayerByNationId("model.nation.dutch");
         Tile unitTile = map.getTile(6, 8);

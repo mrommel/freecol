@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -68,7 +68,7 @@ public final class TilePopup extends JPopupMenu {
 
     private final FreeColClient freeColClient;
     private final GUI gui;
-    private final Canvas canvas;
+    private Font font;
     private boolean hasAnItem = false;
 
 
@@ -76,100 +76,105 @@ public final class TilePopup extends JPopupMenu {
      * The constructor that will insert the MenuItems.
      *
      * @param freeColClient The {@code FreeColClient} for the game.
-     * @param canvas The Canvas.
      * @param tile The {@code Tile} to create a popup for.
      *       The popup menu also appears near this {@code Tile}.
      */
-    public TilePopup(final FreeColClient freeColClient, final Canvas canvas,
-                     final Tile tile) {
+    public TilePopup(final FreeColClient freeColClient, final Tile tile) {
         super(Messages.message(tile.getSimpleLabel()));
 
         this.freeColClient = freeColClient;
         this.gui = freeColClient.getGUI();
-        this.canvas = canvas;
-
+        this.font = FontLibrary.getUnscaledFont("normal-bold-tiny");
         final InGameController igc = freeColClient.getInGameController();
         final Player player = freeColClient.getMyPlayer();
+
         final Unit activeUnit = gui.getActiveUnit();
-        final boolean owned = player != null && activeUnit != null
-            && player.owns(activeUnit);
-        Tile unitTile;
-        if (activeUnit != null && owned
-            && (unitTile = activeUnit.getTile()) != null) {
-            JMenuItem gotoMenuItem = null;
-            if (activeUnit.isOffensiveUnit()
-                && unitTile.isAdjacent(tile)
-                && activeUnit.getMoveType(tile).isAttack()) {
-                gotoMenuItem = Utility.localizedMenuItem(activeUnit
-                    .getCombatLabel(tile));
-            } else if (activeUnit.getSimpleMoveType(unitTile, tile).isLegal()) {
-                gotoMenuItem = Utility.localizedMenuItem("goToThisTile");
-            }
-            if (gotoMenuItem != null) {
-                gotoMenuItem.addActionListener((ActionEvent ae) -> {
-                        if (!freeColClient.currentPlayerIsMyPlayer()) return;
-                        TilePopup.this.gui.performGoto(tile);
-                    });
-                add(gotoMenuItem);
-            }
-
-            // Add move to Europe entry if the unit can do so
-            if (unitTile == tile && activeUnit.canMoveToHighSeas()) {
-                JMenuItem europeMenuItem = Utility.localizedMenuItem(StringTemplate
-                    .template("goToEurope"));
-                europeMenuItem.addActionListener((ActionEvent ae) -> {
-                        if (!freeColClient.currentPlayerIsMyPlayer()) return;
-                        igc.moveTo(activeUnit, player.getEurope());
-                    });
-                add(europeMenuItem);
-                hasAnItem = true;
-            }
-
-            // Add state changes if present
-            if (unitTile == tile) {
-                JMenuItem ji = null;
-                if (activeUnit.checkSetState(UnitState.ACTIVE)) {
-                    ji = Utility.localizedMenuItem("activateUnit");
-                    ji.addActionListener((ActionEvent ae) -> {
-                            igc.changeState(activeUnit, Unit.UnitState.ACTIVE);
-                        });
-                    add(ji);
-                    hasAnItem = true;
+        if (activeUnit != null) {
+            final boolean owned = player != null && player.owns(activeUnit);
+            Tile unitTile = activeUnit.getTile();
+            if (owned && unitTile != null) {
+                // Check for unit to tile interactions: attack, goto
+                JMenuItem gotoMenuItem = null;
+                if (activeUnit.isOffensiveUnit()
+                    && unitTile.isAdjacent(tile)
+                    && activeUnit.getMoveType(tile).isAttack()) {
+                    gotoMenuItem = Utility.localizedMenuItem(activeUnit
+                        .getCombatLabel(tile));
+                } else if (activeUnit.getSimpleMoveType(unitTile, tile).isLegal()) {
+                    gotoMenuItem = Utility.localizedMenuItem("goToThisTile");
                 }
-                if (activeUnit.checkSetState(UnitState.FORTIFYING)) {
-                    ji = Utility.localizedMenuItem("fortify");
-                    ji.addActionListener((ActionEvent ae) -> {
-                            igc.changeState(activeUnit, Unit.UnitState.FORTIFYING);
+                if (gotoMenuItem != null) {
+                    gotoMenuItem.addActionListener((ActionEvent ae) -> {
+                            if (!freeColClient.currentPlayerIsMyPlayer())
+                                return;
+                            TilePopup.this.gui.performGoto(tile);
                         });
-                    add(ji);
-                    hasAnItem = true;
-                }
-                if (activeUnit.checkSetState(UnitState.SKIPPED)) {
-                    ji = Utility.localizedMenuItem("skip");
-                    ji.addActionListener((ActionEvent ae) -> {
-                            igc.changeState(activeUnit, Unit.UnitState.SKIPPED);
-                        });
-                    add(ji);
-                    hasAnItem = true;
-                }
-                if (activeUnit.canCarryTreasure()
-                    && activeUnit.canCashInTreasureTrain()) {
-                    ji = Utility.localizedMenuItem("cashInTreasureTrain");
-                    ji.addActionListener((ActionEvent ae) -> {
-                            igc.checkCashInTreasureTrain(activeUnit);
-                        });
-                    ji.setEnabled(true);
-                    add(ji);
-                    hasAnItem = true;
+                    add(gotoMenuItem);
                 }
 
-                if (activeUnit.getDestination() != null) {
-                    ji = Utility.localizedMenuItem("clearOrders");
-                    ji.addActionListener((ActionEvent ae) -> {
-                            igc.clearOrders(activeUnit);
-                        });
-                    add(ji);
-                    hasAnItem = true;
+                // Special cases for active unit on the tile
+                if (unitTile == tile) {
+                    // Add move to Europe entry if the unit can do so
+                    if (activeUnit.canMoveToHighSeas()) {
+                        JMenuItem europeMenuItem
+                            = Utility.localizedMenuItem(StringTemplate.template("goToEurope"));
+                        europeMenuItem.addActionListener((ActionEvent ae) -> {
+                                if (!freeColClient.currentPlayerIsMyPlayer())
+                                    return;
+                                igc.moveTo(activeUnit, player.getEurope());
+                            });
+                        add(europeMenuItem);
+                        hasAnItem = true;
+                    }
+
+                    // Add state changes if present
+                    JMenuItem ji = null;
+                    if (activeUnit.checkSetState(UnitState.ACTIVE)) {
+                        ji = Utility.localizedMenuItem("activateUnit");
+                        ji.addActionListener((ActionEvent ae) -> {
+                                igc.changeState(activeUnit, Unit.UnitState.ACTIVE);
+                            });
+                        add(ji);
+                        hasAnItem = true;
+                    }
+                    if (activeUnit.checkSetState(UnitState.FORTIFYING)) {
+                        ji = Utility.localizedMenuItem("fortify");
+                        ji.addActionListener((ActionEvent ae) -> {
+                                igc.changeState(activeUnit, Unit.UnitState.FORTIFYING);
+                            });
+                        add(ji);
+                        hasAnItem = true;
+                    }
+                    if (activeUnit.checkSetState(UnitState.SKIPPED)) {
+                        ji = Utility.localizedMenuItem("skip");
+                        ji.addActionListener((ActionEvent ae) -> {
+                                igc.changeState(activeUnit, Unit.UnitState.SKIPPED);
+                            });
+                        add(ji);
+                        hasAnItem = true;
+                    }
+
+                    // Treasure train cashin
+                    if (activeUnit.canCarryTreasure()
+                        && activeUnit.canCashInTreasureTrain()) {
+                        ji = Utility.localizedMenuItem("cashInTreasureTrain");
+                        ji.addActionListener((ActionEvent ae) -> {
+                                igc.checkCashInTreasureTrain(activeUnit);
+                            });
+                        ji.setEnabled(true);
+                        add(ji);
+                        hasAnItem = true;
+                    }
+                    
+                    // Clear orders is possible if there is a destination
+                    if (activeUnit.getDestination() != null) {
+                        ji = Utility.localizedMenuItem("clearOrders");
+                        ji.addActionListener((ActionEvent ae) -> {
+                                igc.clearOrders(activeUnit);
+                            });
+                        add(ji);
+                        hasAnItem = true;
+                    }
                 }
             }
             if (hasAnItem) addSeparator();
@@ -213,7 +218,7 @@ public final class TilePopup extends JPopupMenu {
                 .template("activateAllUnits"));
             activateAllItem.addActionListener((ActionEvent ae) -> {
                     for (Unit unit : tile.getUnitList()) igc.clearOrders(unit);
-                    gui.changeView(tile.getFirstUnit());
+                    gui.changeView(tile.getFirstUnit(), false);
                 });
             add(activateAllItem);
         }
@@ -342,7 +347,7 @@ public final class TilePopup extends JPopupMenu {
                     LogBuilder lb = new LogBuilder(512);
                     PathNode path = activeUnit.findPath(activeUnit.getTile(),
                         tile, activeUnit.getCarrier(), null, lb);
-                    gui.showInformationMessage(lb.toString());
+                    gui.showInformationPanel(lb.toString());
                     gui.setUnitPath(path);
                     gui.refresh();                        
                 });
@@ -365,6 +370,7 @@ public final class TilePopup extends JPopupMenu {
 
     /**
      * Adds a unit entry to this popup.
+     *
      * @param menu a {@code Container} value
      * @param unit The unit that will be represented on the popup.
      * @param enabled The initial state for the menu item.
@@ -380,11 +386,9 @@ public final class TilePopup extends JPopupMenu {
             + unit.getDescription(Unit.UnitLabelType.NATIONAL)
             + " (" + Messages.message(occ) + ')';
         JMenuItem menuItem = new JMenuItem(text);
-        menuItem.setFont(FontLibrary.createFont(FontLibrary.FontType.NORMAL,
-            FontLibrary.FontSize.TINY, Font.BOLD,
-            gui.getImageLibrary().getScaleFactor()));
+        menuItem.setFont(this.font);
         menuItem.addActionListener((ActionEvent ae) -> {
-                gui.changeView(unit);
+                gui.changeView(unit, false);
             });
         if (indent) {
             menuItem.setFont(menuItem.getFont().deriveFont(Font.ITALIC));
@@ -427,9 +431,7 @@ public final class TilePopup extends JPopupMenu {
         StringTemplate name
             = colony.getLocationLabelFor(freeColClient.getMyPlayer());
         JMenuItem menuItem = Utility.localizedMenuItem(name);
-        menuItem.setFont(FontLibrary.createFont(FontLibrary.FontType.NORMAL,
-            FontLibrary.FontSize.TINY, Font.BOLD,
-            gui.getImageLibrary().getScaleFactor()));
+        menuItem.setFont(this.font);
         menuItem.addActionListener((ActionEvent ae) -> {
                 gui.showColonyPanel(colony, null);
             });
@@ -456,11 +458,9 @@ public final class TilePopup extends JPopupMenu {
         StringTemplate name
             = is.getLocationLabelFor(freeColClient.getMyPlayer());
         JMenuItem menuItem = Utility.localizedMenuItem(name);
-        menuItem.setFont(FontLibrary.createFont(FontLibrary.FontType.NORMAL,
-            FontLibrary.FontSize.TINY, Font.BOLD,
-            gui.getImageLibrary().getScaleFactor()));
+        menuItem.setFont(this.font);
         menuItem.addActionListener((ActionEvent ae) -> {
-                gui.showIndianSettlement(is);
+                gui.showIndianSettlementPanel(is);
             });
         add(menuItem);
         hasAnItem = true;

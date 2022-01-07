@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019  The FreeCol Team
+ *  Copyright (C) 2002-2021  The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -280,7 +280,7 @@ public class InGameControllerTest extends FreeColTestCase {
         Tile tile = camp.getTile().getNeighbourOrNull(Direction.N);
         ServerUnit dutchJesuit = new ServerUnit(game, tile, dutch, missionaryType);
         dutch.exploreForUnit(dutchJesuit);
-        Unit frenchJesuit = new ServerUnit(game, tile, french, missionaryType);
+        ServerUnit frenchJesuit = new ServerUnit(game, tile, french, missionaryType);
         french.exploreForUnit(frenchJesuit);
 
         // Set Dutch tension to HATEFUL

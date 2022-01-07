@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019  The FreeCol Team
+ *  Copyright (C) 2002-2022  The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -40,7 +40,7 @@ public class TradeRouteTest extends FreeColTestCase {
 
     public void testTradeRoute() {
         Game game = getGame();
-        game.setMap(getTestMap(mixedForestType, true));
+        game.changeMap(getTestMap(mixedForestType, true));
 
         // Set up three colonies
         Colony colony1 = getStandardColony(4, 1, 1);

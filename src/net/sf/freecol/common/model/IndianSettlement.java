@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -34,7 +34,6 @@ import java.util.stream.Stream;
 
 import javax.xml.stream.XMLStreamException;
 
-import net.sf.freecol.client.gui.Canvas;
 import net.sf.freecol.common.i18n.Messages;
 import net.sf.freecol.common.io.FreeColXMLReader;
 import net.sf.freecol.common.io.FreeColXMLWriter;
@@ -861,13 +860,16 @@ public class IndianSettlement extends Settlement implements TradeLocation {
         GoodsType rawType = type.getInputType();
         if (rawType != null) {
             int rawProduction = getMaximumProduction(rawType);
-            int add = (rawProduction < 5) ? 10 * rawProduction
+            // Pretend that we can "easily" produce a certain amount of the
+            // manufactured goods
+            int fakeProduction = (rawProduction < 5) ? 10 * rawProduction
                 : (rawProduction < 10) ? 5 * rawProduction + 25
                 : (rawProduction < 20) ? 2 * rawProduction + 55
                 : 100;
-            // Decrease bonus in proportion to current stock, up to capacity.
-            add = add * Math.max(0, capacity - current) / capacity;
-            current += add;
+            fakeProduction *= 0.5;
+            // Pretend that we have actually done so, in proportion to
+            // the available space
+            current += fakeProduction * Math.max(0, capacity - current) / capacity;
         } else if (type.isTradeGoods()) {
             // Small artificial increase of the trade goods stored.
             current += tradeGoodsAdd;
@@ -1446,8 +1448,8 @@ public class IndianSettlement extends Settlement implements TradeLocation {
      * Determines the value of a potential attack on a {@code IndianSettlement}
      *
      * @param value The previously calculated input value from
-     *          {@link net.sf.freecol.server.ai.mission.UnitSeekAndDestroyMission
-     *                  #scoreSettlementPath(AIUnit, PathNode, Settlement)}
+     *     {@link net.sf.freecol.server.ai.mission.UnitSeekAndDestroyMission
+     *            #scoreSettlementPath(AIUnit, PathNode, Settlement)}
      * @param unit The {@code AIUnit} to check
      * @return The calculated value
      */
@@ -1586,11 +1588,10 @@ public class IndianSettlement extends Settlement implements TradeLocation {
         final ContactLevel cl = getContactLevel(xw.getClientPlayer());
         final boolean full = xw.validFor(getOwner());
         
-        if (full // Name needs contact
-            || cl != ContactLevel.UNCONTACTED) {
-            if (getName() != null) { // Delegated from Settlement
-                xw.writeAttribute(NAME_TAG, getName());
-            }
+        // Delegated from Settlement
+        String name = getName();
+        if (name != null) {
+            xw.writeAttribute(NAME_TAG, name);
         }
 
         if (full) { // Server internal fields only

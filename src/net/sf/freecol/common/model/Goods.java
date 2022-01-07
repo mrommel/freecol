@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -147,7 +147,7 @@ public class Goods extends AbstractGoods implements Locatable, Ownable {
     }
 
     /**
-     * {@inheritDoc}
+     * @param location The Settlement that is located on this Tile
      */
     @Override
     public boolean setLocation(Location location) {

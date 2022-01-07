@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -19,6 +19,10 @@
 
 package net.sf.freecol.client.control;
 
+import static net.sf.freecol.common.util.CollectionUtils.alwaysTrue;
+import static net.sf.freecol.common.util.CollectionUtils.makeUnmodifiableList;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -28,25 +32,21 @@ import java.util.logging.Logger;
 
 import javax.swing.SwingUtilities;
 
-import net.sf.freecol.FreeCol; 
+import net.sf.freecol.FreeCol;
 import net.sf.freecol.client.ClientOptions;
 import net.sf.freecol.client.FreeColClient;
-import net.sf.freecol.client.control.FreeColClientHolder;
 import net.sf.freecol.client.gui.ChoiceItem;
 import net.sf.freecol.client.gui.GUI;
 import net.sf.freecol.client.gui.LoadingSavegameInfo;
 import net.sf.freecol.common.i18n.Messages;
 import net.sf.freecol.common.io.FreeColModFile;
 import net.sf.freecol.common.io.FreeColSavegameFile;
-import net.sf.freecol.common.io.FreeColXMLReader;
 import net.sf.freecol.common.model.Game;
 import net.sf.freecol.common.model.Game.LogoutReason;
 import net.sf.freecol.common.model.Player;
 import net.sf.freecol.common.model.Specification;
 import net.sf.freecol.common.model.StringTemplate;
 import net.sf.freecol.common.model.Unit;
-import net.sf.freecol.common.networking.Connection;
-import static net.sf.freecol.common.util.CollectionUtils.*;
 import net.sf.freecol.common.util.Utils;
 import net.sf.freecol.server.FreeColServer;
 import net.sf.freecol.server.FreeColServer.ServerState;
@@ -153,7 +153,9 @@ public final class ConnectController extends FreeColClientHolder {
         switch (reason) {
         case DEFEATED: case QUIT:
             fcc.logout(false);
-            fcc.quit();
+            SwingUtilities.invokeLater(() -> {
+                mainTitle();
+            });
             break;
         case LOGIN: // FIXME: This should not happen, drop when convinced
             FreeCol.trace(logger, "logout(LOGIN) detected");
@@ -161,31 +163,43 @@ public final class ConnectController extends FreeColClientHolder {
             break;
         case MAIN_TITLE: // All the way back to the MainPanel
             fcc.logout(false);
-            mainTitle();
+            /*
+             * This should not be needed as it was mainTitle that
+             * initiated the logout.
+             * 
+             * mainTitle();
+             */
             break;
         case NEW_GAME: // Back to the NewPanel
             fcc.logout(false);
-            newGame();
+            /*
+             * This should not be needed as it was mainTitle that
+             * initiated the logout.
+             *
+             * newGame();
+             */
             break;
         case RECONNECT:
         default: // default "can not happen", but if so, reconnect is safest
             fcc.logout(false);
-            final String name = player.getName();
-            try {
-                if (askServer().reconnect() != null
-                    && askServer().login(name, FreeCol.getVersion(),
-                                         fcc.getSinglePlayer(),
-                                         fcc.currentPlayerIsMyPlayer())) {
-                    logger.info("Reconnected for client " + name);
-                } else {
-                    logger.severe("Reconnect failed for client " + name);
-                    fcc.askToQuit();
+            SwingUtilities.invokeLater(() -> {
+                final String name = player.getName();
+                try {
+                    if (askServer().reconnect() != null
+                        && askServer().login(name, FreeCol.getVersion(),
+                                             fcc.getSinglePlayer(),
+                                             fcc.currentPlayerIsMyPlayer())) {
+                        logger.info("Reconnected for client " + name);
+                    } else {
+                        logger.severe("Reconnect failed for client " + name);
+                        fcc.askToQuit();
+                    }
+                } catch (IOException ioe) {
+                    logger.log(Level.SEVERE, "Reconnect exception for client "
+                        + name, ioe);
+                    fcc.quit();
                 }
-            } catch (IOException ioe) {
-                logger.log(Level.SEVERE, "Reconnect exception for client "
-                    + name, ioe);
-                fcc.quit();
-            }
+            });
             break;
         }
         return true;
@@ -224,7 +238,7 @@ public final class ConnectController extends FreeColClientHolder {
             }
             err = StringTemplate.template("server.couldNotLogin");
         }
-        getGUI().showErrorMessage(err);
+        getGUI().showErrorPanel(err);
         return false;
     }
 
@@ -264,7 +278,7 @@ public final class ConnectController extends FreeColClientHolder {
         if (player == null) {
             StringTemplate err = StringTemplate.template("server.noSuchPlayer")
                 .addName("%player%", user);
-            getGUI().showErrorMessage(err);
+            getGUI().showErrorPanel(err);
             logger.warning(Messages.message(err));
             return;
         }
@@ -281,7 +295,7 @@ public final class ConnectController extends FreeColClientHolder {
         if (fcc.isInGame()) { // Joining existing game or possibly reconnect
             fcc.restoreGUI(player);
             igc().nextModelMessage();
-        } else if (game.getMap() != null
+        } else if (getMap() != null
             && game.allPlayersReadyToLaunch()) { // Ready to launch!
             pgc().requestLaunch();
         } else { // More parameters need to be set or players to become ready
@@ -357,28 +371,29 @@ public final class ConnectController extends FreeColClientHolder {
         try {
             fis = new FreeColSavegameFile(file);
         } catch (FileNotFoundException fnfe) {
-            gui.errorJob(fnfe, FreeCol.badFile("error.couldNotFind", file))
-                .invokeLater();
             logger.log(Level.WARNING, "Can not find file: " + file.getName(),
                        fnfe);
+            gui.showErrorPanel(fnfe,
+                FreeCol.badFile("error.couldNotFind", file));
             return false;
         } catch (IOException ioe) {
-            gui.errorJob(FreeCol.badFile("error.couldNotLoad", file))
-                .invokeLater();
             logger.log(Level.WARNING, "Could not load file: " + file.getName(),
                        ioe);
+            gui.showErrorPanel(ioe,
+                FreeCol.badFile("error.couldNotLoad", file));
             return false;
         }
         options.merge(fis);
+
         options.fixClientOptions();
         List<String> values = null;
         try {
             values = fis.peekAttributes(savedKeys);
         } catch (Exception ex) {
-            gui.errorJob(ex, FreeCol.badFile("error.couldNotLoad", file))
-                .invokeLater();
             logger.log(Level.WARNING, "Could not read from: " + file.getName(),
                        ex);
+            gui.showErrorPanel(ex,
+                FreeCol.badFile("error.couldNotLoad", file));
             return false;
         }
         if (values != null && values.size() == savedKeys.size()) {
@@ -414,7 +429,8 @@ public final class ConnectController extends FreeColClientHolder {
             port = -1;
         }
         Messages.loadActiveModMessageBundle(options.getActiveMods(),
-                                            FreeCol.getLocale());
+            FreeCol.getLocale());
+
         if (!fcc.unblockServer(port)) return false;
 
         if (fcc.isLoggedIn()) { // Should not happen, warn and suppress
@@ -425,6 +441,9 @@ public final class ConnectController extends FreeColClientHolder {
         FreeColServer fcs = fcc.startServer(publicServer, singlePlayer, file,
                                             port, serverName);
         if (fcs == null) return false;
+
+        fcs.getGame().getSpecification().loadMods(options.getActiveMods());
+
         fcc.setFreeColServer(fcs);
         fcc.setSinglePlayer(true);
         return requestLogin(FreeCol.getName(), fcs.getHost(), fcs.getPort());
@@ -478,7 +497,7 @@ public final class ConnectController extends FreeColClientHolder {
         String name = FreeCol.getName();
         StringTemplate err = connect(name, host, port);
         if (err != null) {
-            getGUI().showErrorMessage(err);
+            getGUI().showErrorPanel(err);
             return false;
         }
         while (fcc.getServerState() == null) Utils.delay(1000, null);
@@ -493,7 +512,7 @@ public final class ConnectController extends FreeColClientHolder {
             /*
             // Disable this check if you need to debug a multiplayer client.
             if (FreeColDebugger.isInDebugMode(FreeColDebugger.DebugMode.MENUS)) {
-                getGUI().showErrorMessage(StringTemplate
+                getGUI().showErrorPanel(StringTemplate
                     .template("client.debugConnect"));
                 return false;
             }
@@ -513,7 +532,7 @@ public final class ConnectController extends FreeColClientHolder {
             break;
 
         case END_GAME: default:
-            getGUI().showErrorMessage(StringTemplate.template("client.ending"));
+            getGUI().showErrorPanel(StringTemplate.template("client.ending"));
             return false;
         }
         return requestLogin(name, host, port);
@@ -526,19 +545,21 @@ public final class ConnectController extends FreeColClientHolder {
      */
     public void mainTitle() {
         final FreeColClient fcc = getFreeColClient();
-        
-        if (fcc.isMapEditor()) fcc.setMapEditor(false);
-
-        if (fcc.isLoggedIn()) {
-            if (getGUI().confirmStopGame()) {
-                requestLogout(LogoutReason.MAIN_TITLE);
-            }
+        if ((fcc.isLoggedIn() || fcc.isMapEditor()) && !getGUI().confirmStopGame()) {
             return;
         }
-            
-        fcc.stopServer();
-        getGUI().removeInGameComponents();
+        
+        if (fcc.isMapEditor()) {
+            fcc.setMapEditor(false);
+        }
+        
         getGUI().showMainTitle();
+
+        if (fcc.isLoggedIn()) {
+            requestLogout(LogoutReason.MAIN_TITLE);
+        }
+        
+        fcc.stopServer();
     }
     
     /**
@@ -547,20 +568,22 @@ public final class ConnectController extends FreeColClientHolder {
     public void newGame() {
         final FreeColClient fcc = getFreeColClient();
 
+        if (fcc.isLoggedIn() && !getGUI().confirmStopGame()) {
+            return;
+        }
+        
         if (fcc.isMapEditor()) {
             fcc.getMapEditorController().newMap();
             return;
         }
 
+        getGUI().removeInGameComponents();
+        getGUI().showNewPanel(null);
+        
         if (fcc.isLoggedIn()) {
-            if (getGUI().confirmStopGame()) {
-                requestLogout(LogoutReason.NEW_GAME);
-            }
-            return;
+            requestLogout(LogoutReason.NEW_GAME);
         }
 
         fcc.stopServer();
-        getGUI().removeInGameComponents();
-        getGUI().showNewPanel(null);
     }
 }

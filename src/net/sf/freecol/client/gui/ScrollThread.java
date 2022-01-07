@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -26,6 +26,7 @@ import java.util.logging.Logger;
 import javax.swing.SwingUtilities;
 
 import net.sf.freecol.FreeCol;
+import net.sf.freecol.client.FreeColClient;
 import net.sf.freecol.common.model.Direction;
 
 
@@ -39,21 +40,23 @@ public class ScrollThread extends Thread {
     /** Delay between scroll steps. */
     private static final int SCROLL_DELAY = 100; // ms
 
-    /** The Canvas containing the map to scroll. */
-    private final Canvas canvas;
+    /** The enclosing client. */
+    private final FreeColClient freeColClient;
 
     /** The direction to scroll in. */
-    private Direction direction = null;
+    private volatile Direction direction = null;
+    
+    private volatile boolean aborted = false;
 
 
     /**
      * The constructor to use.
      * 
-     * @param canvas The Canvas containing the map to scroll.
+     * @param freeColClient The enclosing {@code FreeColClient}.
      */
-    public ScrollThread(Canvas canvas) {
+    public ScrollThread(FreeColClient freeColClient) {
         super(FreeCol.CLIENT_THREAD + "Mouse scroller");
-        this.canvas = canvas;
+        this.freeColClient = freeColClient;
     }
 
     /**
@@ -65,6 +68,15 @@ public class ScrollThread extends Thread {
     public void setDirection(Direction d) {
         direction = d;
     }
+    
+    public boolean isAborted() {
+        return aborted;
+    }
+    
+    public void abort() {
+        aborted = true;
+        this.direction = null;
+    }
 
     /**
      * Performs the actual scrolling.
@@ -72,22 +84,40 @@ public class ScrollThread extends Thread {
      */
     @Override
     public void run() {
-        while (direction != null) {
+        final GUI gui = this.freeColClient.getGUI();
+        while (true) {
+            if (isAborted()) {
+                return;
+            }
+            final Direction d = this.direction;
+            if (d == null) {
+                abort();
+                return;
+            }
             try {
                 SwingUtilities.invokeAndWait(() -> {
-                        if (!canvas.scrollMap(direction)) direction = null;
-                    });
-            } catch (InvocationTargetException e) {
-                logger.log(Level.WARNING, "Scroll thread caught error", e);
-                break;
+                    if (!gui.scrollMap(d)) {
+                        abort();
+                    }
+                });
             } catch (InterruptedException e) {
-                break; // It is normal for AbstractCanvasListener to interrupt.
+                abort();
+                return;
+            } catch (Exception ex) {
+                logger.log(Level.WARNING, "Exception while scrolling", ex);
+                abort();
+                return;
+            }
+
+            if (isAborted()) {
+                return;
             }
 
             try {
                 sleep(SCROLL_DELAY);
             } catch (InterruptedException e) {
-                break;
+                abort();
+                return;
             }
         }
     }

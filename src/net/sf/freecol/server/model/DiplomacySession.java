@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -290,6 +290,19 @@ public class DiplomacySession extends TimedSession {
         }
         this.unit.setMovesLeft(0);
         cs.add(See.only(getOwner()), this.unit);
+    }
+
+    /**
+     * Complete first contact session.
+     *
+     * Just do nothing but superclass action as we do not want the
+     * offer accept/reject messages, and the unit already has zero moves.
+     *
+     * @param cs A {@code ChangeSet} to update.
+     * @return Whether the session was already complete.
+     */
+    public boolean completeFirstContact(ChangeSet cs) {
+        return super.complete(cs);
     }
 
     /**

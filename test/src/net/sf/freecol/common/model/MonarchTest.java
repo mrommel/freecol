@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019  The FreeCol Team
+ *  Copyright (C) 2002-2022  The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -49,7 +49,7 @@ public class MonarchTest extends FreeColTestCase {
 
     public void testTaxActionChoices() {
         Game game = getStandardGame();
-        game.setMap(getTestMap());
+        game.changeMap(getTestMap());
 
         Player dutch = game.getPlayerByNationId("model.nation.dutch");
 

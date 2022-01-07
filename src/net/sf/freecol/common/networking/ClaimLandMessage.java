@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -24,6 +24,7 @@ import javax.xml.stream.XMLStreamException;
 import net.sf.freecol.common.io.FreeColXMLReader;
 import net.sf.freecol.common.model.FreeColGameObject;
 import net.sf.freecol.common.model.FreeColObject;
+import net.sf.freecol.common.model.Colony;
 import net.sf.freecol.common.model.Game;
 import net.sf.freecol.common.model.Player;
 import net.sf.freecol.common.model.Player.NoClaimReason;
@@ -111,6 +112,16 @@ public class ClaimLandMessage extends AttributeMessage {
             unit = serverPlayer.getOurFreeColGameObject(claimantId, Unit.class);
             if (unit.getTile() != tile) {
                 return serverPlayer.clientError("Unit not at tile: " + tileId);
+            }
+            // Implicit claim by nearby settlement
+            if (tile.getOwningSettlement() == null) {
+                for (Tile t : tile.getSurroundingTiles(1)) {
+                    Colony colony = t.getColony();
+                    if (serverPlayer.owns(colony)) {
+                        settlement = colony;
+                        break;
+                    }
+                }
             }
         } else if (Settlement.class.isAssignableFrom(c)) {
             settlement = serverPlayer.getOurFreeColGameObject(claimantId,

@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -45,7 +45,9 @@ import net.sf.freecol.client.FreeColClient;
 import net.sf.freecol.client.gui.FontLibrary;
 import net.sf.freecol.client.gui.ImageLibrary;
 import net.sf.freecol.client.gui.panel.*;
+import net.sf.freecol.client.gui.Size;
 import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.Building;
 import net.sf.freecol.common.model.Colony;
 import net.sf.freecol.common.model.Europe;
 import net.sf.freecol.common.model.FreeColGameObject;
@@ -54,6 +56,7 @@ import net.sf.freecol.common.model.Game;
 import net.sf.freecol.common.model.Market;
 import net.sf.freecol.common.model.ModelMessage;
 import net.sf.freecol.common.model.Nameable;
+import net.sf.freecol.common.model.Named;
 import net.sf.freecol.common.model.Player;
 import net.sf.freecol.common.model.StringTemplate;
 import net.sf.freecol.common.model.Tile;
@@ -131,8 +134,8 @@ public final class ReportTurnPanel extends ReportPanel {
             case ClientOptions.MESSAGES_GROUP_BY_TYPE:
                 if (message.getMessageType() != type) {
                     type = message.getMessageType();
-                    JLabel headline = Utility.localizedHeaderLabel(
-                        message.getMessageType(), FontLibrary.FontSize.SMALL);
+                    JLabel headline = Utility.localizedHeaderLabel(type,
+                        Utility.FONTSPEC_SUBTITLE);
                     reportPanel.add(headline, "newline 20, skip, span");
                 }
                 break;
@@ -264,6 +267,10 @@ public final class ReportTurnPanel extends ReportPanel {
             final Colony colony = (Colony) source;
             text = colony.getName();
             commandId = colony.getId();
+        } else if (source instanceof Building) {
+            final Colony colony = ((Building)source).getColony();
+            text = colony.getName();
+            commandId = colony.getId();
         } else if (source instanceof Unit) {
             final Unit unit = (Unit) source;
             text = unit.getDescription(Unit.UnitLabelType.NATIONAL);
@@ -273,21 +280,22 @@ public final class ReportTurnPanel extends ReportPanel {
             StringTemplate template = tile.getLocationLabelFor(getMyPlayer());
             text = Messages.message(template);
             commandId = tile.getId();
+        } else if (source instanceof Named) {
+            text = Messages.message(((Named)source).getNameKey());
         } else if (source instanceof Nameable) {
-            text = ((Nameable) source).getName();
+            text = ((Nameable)source).getName();
         } else {
             text = source.toString();
         }
 
-        Font font = FontLibrary.createCompatibleFont(text,
-            FontLibrary.FontType.HEADER, FontLibrary.FontSize.SMALL);
+        Font font = FontLibrary.getUnscaledFont(Utility.FONTSPEC_SUBTITLE, text);
         JComponent headline;
         if (commandId != null) {
             JButton button = new JButton(text);
             button.addActionListener(this);
             button.setActionCommand(commandId);
             headline = button;
-            headline.setForeground(Utility.LINK_COLOR);
+            headline.setForeground(Utility.getLinkColor());
         } else {
             headline = new JLabel(text);
         }

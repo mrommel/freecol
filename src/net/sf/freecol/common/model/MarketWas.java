@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -82,14 +82,22 @@ public class MarketWas {
      */
     public void fireChanges(GoodsType type, int amount) {
         for (TransactionListener l : this.market.getTransactionListener()) {
-            if (amount > 0) {
-                Integer buy = this.costToBuy.get(type);
-                if (buy == null) buy = this.market.getCostToBuy(type);
-                l.logPurchase(type, amount, buy);
-            } else if (amount < 0) {
-                Integer sell = this.paidForSale.get(type);
-                if (sell == null) sell = this.market.getPaidForSale(type);
-                l.logSale(type, -amount, sell, this.tax);
+            if (amount < 0) {
+                int buy = this.costToBuy.get(type);
+                l.logPurchase(type, -amount, buy);
+                int buyNow = this.market.getCostToBuy(type);
+                if (buy != buyNow) {
+                    this.market.getMarketData(type)
+                        .firePropertyChange(Market.PRICE_CHANGE, buy, buyNow);
+                }
+            } else if (amount > 0) {
+                int sell = this.paidForSale.get(type);
+                l.logSale(type, amount, sell, this.tax);
+                int sellNow = this.market.getPaidForSale(type);
+                if (sell != sellNow) {
+                    this.market.getMarketData(type)
+                        .firePropertyChange(Market.PRICE_CHANGE, sell, sellNow);
+                }
             }
         }
     }

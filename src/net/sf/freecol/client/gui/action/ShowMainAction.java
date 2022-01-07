@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -52,8 +52,6 @@ public class ShowMainAction extends FreeColAction {
      */
     @Override
     public void actionPerformed(ActionEvent ae) {
-        if (getGUI().confirmStopGame()) {
-            getFreeColClient().getConnectController().mainTitle();
-        }
+        getFreeColClient().getConnectController().mainTitle();
     }
 }

@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -192,6 +192,10 @@ public class GameOptions {
      */
     public static final String ALLOW_STUDENT_SELECTION
         = "model.option.allowStudentSelection";
+
+    /** Claim all possible surrounding tiles when founding a colony? */
+    public static final String CLAIM_ALL_TILES
+        = "model.option.claimAllTiles";
 
     /** Enable upkeep requirement on buildings. */
     public static final String ENABLE_UPKEEP

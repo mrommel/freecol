@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -138,6 +138,9 @@ public class Unit extends GoodsLocation
      */
     public static final int MANY_TURNS = 10000;
 
+    /** Default value of unpriced units, used in evaluate_for. */
+    public static final int DEFAULT_UNIT_VALUE = 500;
+    
     public static final String CARGO_CHANGE = "CARGO_CHANGE";
     public static final String MOVE_CHANGE = "MOVE_CHANGE";
     public static final String ROLE_CHANGE = "ROLE_CHANGE";
@@ -583,9 +586,16 @@ public class Unit extends GoodsLocation
             setMovesLeft(getInitialMovesLeft());
         }
         this.hitPoints = unitType.getHitPoints();
-        if (getTeacher() != null && !canBeStudent(getTeacher())) {
-            getTeacher().setStudent(null);
-            setTeacher(null);
+        if (getTeacher() != null) {
+            if (!canBeStudent(getTeacher())) {
+                getTeacher().setStudent(null);
+                setTeacher(null);
+            }
+        } else if (getStudent() != null) {
+            if (!getStudent().canBeStudent(this)) {
+                getStudent().setTeacher(null);
+                setStudent(null);
+            }
         }
         return true;
     }
@@ -2412,17 +2422,23 @@ public class Unit extends GoodsLocation
      * @return The appropriate {@code MoveType}.
      */
     private MoveType getTradeMoveType(Settlement settlement) {
+        final Player owner = this.getOwner();
         if (settlement instanceof Colony) {
-            return (getOwner().atWarWith(settlement.getOwner()))
+            return (owner.atWarWith(settlement.getOwner()))
                 ? MoveType.MOVE_NO_ACCESS_WAR
                 : (!hasAbility(Ability.TRADE_WITH_FOREIGN_COLONIES))
                 ? MoveType.MOVE_NO_ACCESS_TRADE
                 : MoveType.ENTER_SETTLEMENT_WITH_CARRIER_AND_GOODS;
         } else if (settlement instanceof IndianSettlement) {
-            // Do not block for war, bringing gifts is allowed
-            return (!((IndianSettlement)settlement).allowContact(this))
+            // Require contact, and settlement-level contact for naval units,
+            // but not block for war as bringing gifts is allowed
+            return (!allowContact(settlement)
+                || (this.isNaval()
+                    && ((IndianSettlement)settlement).getContactLevel(owner)
+                    == IndianSettlement.ContactLevel.UNCONTACTED))
                 ? MoveType.MOVE_NO_ACCESS_CONTACT
-                : (hasGoodsCargo() || getSpecification()
+                // Allow trade if cargo present or empty-traders-option
+                : (this.hasGoodsCargo() || getSpecification()
                     .getBoolean(GameOptions.EMPTY_TRADERS))
                 ? MoveType.ENTER_SETTLEMENT_WITH_CARRIER_AND_GOODS
                 : MoveType.MOVE_NO_ACCESS_GOODS;
@@ -2625,16 +2641,26 @@ public class Unit extends GoodsLocation
      */
     public Location resolveDestination() {
         if (!isAtSea()) throw new RuntimeException("Not at sea: " + this);
+        Tile ret = null;
+        // Is there a destination, either explicit or by trade route?
         TradeRouteStop stop = getStop();
         Location dst = (TradeRoute.isStopValid(this, stop))
             ? stop.getLocation()
             : getDestination();
-        Tile best;
-        return (dst == null) ? getFullEntryLocation()
-            : (dst instanceof Europe) ? dst
-            : (dst.getTile() != null
-                && (best = getBestEntryTile(dst.getTile())) != null) ? best
+        // If the destination is Europe, we are done
+        if (dst instanceof Europe) return dst;
+        // If there is a destination with an associated tile, get a
+        // nearby best entry tile.  Otherwise use the fallback entry
+        // location for the owner player.
+        ret = (dst != null && dst.getTile() != null)
+            ? getBestEntryTile(dst.getTile())
             : getFullEntryLocation();
+        // Apparently this can still be null!?!  At least log such cases
+        if (ret == null) {
+            logger.warning("resolveDestination(" + dst
+                + ") is null for: " + this);
+        }
+        return ret;
     }
 
     /**
@@ -3823,7 +3849,9 @@ public class Unit extends GoodsLocation
      */
     public int evaluateFor(Player player) {
         final Europe europe = player.getEurope();
-        return (europe == null) ? 500 : europe.getUnitPrice(getType());
+        if (europe == null) return DEFAULT_UNIT_VALUE;
+        int price = europe.getUnitPrice(getType());
+        return (price == UNDEFINED) ? DEFAULT_UNIT_VALUE : price;
     }
 
     // @compat 0.11.0
@@ -4083,7 +4111,7 @@ public class Unit extends GoodsLocation
      * -til: While units do not contribute to tile appearance as such, if
      *     they move in/out of a colony the visible colony size changes.
      *
-     * @param newLocation The new {@code Location}.
+     * @param newLocation The Tile where this Unit is located. Or null if its location is Europe.
      * @return True if the location change succeeds.
      */
     @Override
@@ -4728,7 +4756,6 @@ public class Unit extends GoodsLocation
         Player oldOwner = owner;
         owner = xr.findFreeColGameObject(game, OWNER_TAG,
                                          Player.class, (Player)null, true);
-        if (xr.shouldIntern()) game.checkOwners(this, oldOwner);
 
         this.type = xr.getType(spec, UNIT_TYPE_TAG,
                                UnitType.class, (UnitType)null);
@@ -4790,6 +4817,9 @@ public class Unit extends GoodsLocation
         // Fix changes to production
         WorkLocation wl = getWorkLocation();
         if (wl != null && wl != oldWorkLocation) wl.updateProductionType();
+
+        // Check ownership as late as possible
+        if (xr.shouldIntern()) game.checkOwners(this, oldOwner);
     }
 
     /**
@@ -4858,7 +4888,11 @@ public class Unit extends GoodsLocation
             sb.append(" uninitialized");
         } else if (isDisposed()) {
             sb.append(" disposed");
-        } else {
+        } else if (owner == null) {
+            sb.append(" unowned");
+        } else if (getType() == null) {
+            sb.append(" untyped");
+        } else {            
             sb.append(' ').append(lastPart(owner.getNationId(), "."))
                 .append(' ').append(getType().getSuffix());
             if (!hasDefaultRole()) {

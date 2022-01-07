@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -106,7 +106,12 @@ public class FreeColXMLReader extends StreamReaderDelegate
     /** The read scope to apply. */
     private ReadScope readScope;
 
-    /** A cache of uninterned objects. */
+    /**
+     * A cache of uninterned objects.  Uninterned reads add to this list
+     * so that they can refer to sub-objects correctly.  However there is no
+     * obvious place to clear this cache, so we do that in replaceScope
+     * as you can not expect to reference the same object across scopes.
+     */
     private Map<String, FreeColObject> uninterned
         = new HashMap<String, FreeColObject>();
 
@@ -122,7 +127,7 @@ public class FreeColXMLReader extends StreamReaderDelegate
         throws XMLStreamException {
         super();
 
-        XMLInputFactory xif = XMLInputFactory.newInstance();
+        XMLInputFactory xif = newXMLInputFactory();
         XMLStreamReader xsr;
         try {
             xsr = xif.createXMLStreamReader(bis, "UTF-8");
@@ -168,7 +173,7 @@ public class FreeColXMLReader extends StreamReaderDelegate
     public FreeColXMLReader(Reader reader) throws XMLStreamException {
         super();
 
-        XMLInputFactory xif = XMLInputFactory.newInstance();
+        XMLInputFactory xif = newXMLInputFactory();
         XMLStreamReader xsr = xif.createXMLStreamReader(reader);
         setParent(xsr);
         this.inputStream = null;
@@ -176,6 +181,21 @@ public class FreeColXMLReader extends StreamReaderDelegate
         this.uninterned.clear();
     }
 
+    /**
+     * Create a new XMLInputFactory.
+     *
+     * Respond to CVE 2018-1000825.
+     *
+     * @return A new <code>XMLInputFactory</code>.
+     */
+    private static XMLInputFactory newXMLInputFactory() {
+        XMLInputFactory xif = XMLInputFactory.newInstance();
+        // This disables DTDs entirely for that factory
+        xif.setProperty(XMLInputFactory.SUPPORT_DTD, false); 
+        // disable external entities
+        xif.setProperty("javax.xml.stream.isSupportingExternalEntities", false);
+        return xif;
+    }
 
     /**
      * Set the tracing state.
@@ -226,6 +246,12 @@ public class FreeColXMLReader extends StreamReaderDelegate
      */
     public ReadScope replaceScope(ReadScope newReadScope) {
         ReadScope ret = this.readScope;
+        
+        if (this.readScope != newReadScope) {
+            // Take the opportunity to clear the uninterned object cache
+            // as they can not be the same across scopes
+            this.uninterned.clear();
+        }
         this.readScope = newReadScope;
         return ret;
     }

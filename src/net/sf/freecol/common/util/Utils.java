@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -19,6 +19,10 @@
 
 package net.sf.freecol.common.util;
 
+import java.awt.GraphicsDevice;
+import java.awt.GraphicsEnvironment;
+import java.awt.HeadlessException;
+import java.awt.MouseInfo;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -46,6 +50,7 @@ import javax.xml.transform.OutputKeys;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
+import javax.xml.XMLConstants;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
@@ -60,19 +65,6 @@ public class Utils {
     /** Hex constant digits for get/restoreRandomState. */
     private static final String HEX_DIGITS = "0123456789ABCDEF";
 
-
-    /**
-     * Compare ints.
-     *
-     * Note: not using i0-i1 to be sure of avoiding overflow.
-     *
-     * @param i0 The first int.
-     * @param i1 The second int.
-     * @return -1,0 or 1 depending on the comparison.
-     */
-    public static int compareTo(int i0, int i1) {
-        return (i0 < i1) ? -1 : (i1 < i0) ? 1 : 0;
-    }
 
     /**
      * Check if two objects are equal but also checks for null.
@@ -254,6 +246,8 @@ public class Utils {
         Transformer tf = null;
         try {
             TransformerFactory factory = TransformerFactory.newInstance();
+            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, "");
             factory.setAttribute("indent-number", Integer.valueOf(2));
             tf = factory.newTransformer();
             tf.setOutputProperty(OutputKeys.ENCODING, "UTF-8");
@@ -371,5 +365,24 @@ public class Utils {
      */
     public static boolean isHeadless() {
         return "true".equals(System.getProperty("java.awt.headless", "false"));
+    }
+
+    /**
+     * Get a good screen device for starting FreeCol.
+     *
+     * @return A screen device, or null if none available
+     *     (as in headless mode).
+     */
+    public static GraphicsDevice getGoodGraphicsDevice() {
+        try {
+            return MouseInfo.getPointerInfo().getDevice();
+        } catch (HeadlessException he) {}
+
+        try {
+            final GraphicsEnvironment lge
+                = GraphicsEnvironment.getLocalGraphicsEnvironment();
+            return lge.getDefaultScreenDevice();
+        } catch (HeadlessException he) {}
+        return null;
     }
 }

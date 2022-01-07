@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019  The FreeCol Team
+ *  Copyright (C) 2002-2021  The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -279,7 +279,7 @@ public class ServerColonyTest extends FreeColTestCase {
 
     public void testNoBuildingMaterialsProductionWhenBuildingNothing() {
         Game game = getGame();
-        game.setMap(getTestMap(true));
+        game.changeMap(getTestMap(true));
 
         Colony colony = getStandardColony(4);
         Building carpenterHouse = colony.getBuilding(carpenterHouseType);

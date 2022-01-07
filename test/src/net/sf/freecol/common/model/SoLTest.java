@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019  The FreeCol Team
+ *  Copyright (C) 2002-2022  The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -26,7 +26,7 @@ public class SoLTest extends FreeColTestCase {
 
     public void testSoL() {
         Game game = getGame();
-        game.setMap(getTestMap(true));
+        game.changeMap(getTestMap(true));
 
         final GoodsType bellsType = spec().getGoodsType("model.goods.bells");
         Colony colony = getStandardColony(7);

@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -24,6 +24,7 @@ import java.awt.Image;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.logging.Logger;
 
 import javax.swing.ImageIcon;
 import javax.swing.JLabel;
@@ -39,6 +40,7 @@ import net.sf.freecol.client.gui.FontLibrary;
 import net.sf.freecol.client.gui.ImageLibrary;
 import net.sf.freecol.client.gui.action.ColopediaAction.PanelType;
 import net.sf.freecol.client.gui.panel.*;
+import net.sf.freecol.client.gui.Size;
 import net.sf.freecol.common.i18n.Messages;
 import net.sf.freecol.common.model.FoundingFather;
 import net.sf.freecol.common.model.FoundingFather.FoundingFatherType;
@@ -53,6 +55,7 @@ import net.sf.freecol.common.model.Turn;
 public class FatherDetailPanel
     extends ColopediaGameObjectTypePanel<FoundingFather> {
 
+    private static final Logger logger = Logger.getLogger(FatherDetailPanel.class.getName());
 
     /**
      * Creates a new instance of this ColopediaDetailPanel.
@@ -86,7 +89,7 @@ public class FatherDetailPanel
         for (FoundingFather foundingFather : spec.getFoundingFathers()) {
             fathersByType.get(foundingFather.getType()).add(foundingFather);
         }
-        ImageIcon icon = new ImageIcon(ImageLibrary.getLibertyImage());
+        ImageIcon icon = new ImageIcon(getImageLibrary().getLibertyImage());
         for (FoundingFatherType fatherType : FoundingFatherType.values()) {
             String id = fatherType.getTypeKey();
             String typeName = Messages.message(id);
@@ -107,7 +110,11 @@ public class FatherDetailPanel
     @Override
     public void buildDetail(String id, JPanel panel) {
         FoundingFather father = getSpecification().getFoundingFather(id);
-        buildDetail(father, panel);
+        if (father == null) {
+            logger.warning("Bogus father detail requested for: " + id);
+        } else {
+            buildDetail(father, panel);
+        }
     }
 
     /**
@@ -123,10 +130,9 @@ public class FatherDetailPanel
         String type = Messages.message(father.getTypeKey());
         String text = name + " (" + type + ")";
         JLabel header = new JLabel(text);
-        header.setFont(FontLibrary.createCompatibleFont(text,
-            FontLibrary.FontType.HEADER, FontLibrary.FontSize.SMALL));
+        header.setFont(FontLibrary.getUnscaledFont(Utility.FONTSPEC_SUBTITLE, text));
 
-        Image image = ImageLibrary.getFoundingFatherImage(father, false);
+        Image image = getImageLibrary().getFoundingFatherImage(father, false);
         JLabel label = new JLabel(new ImageIcon(image));
 
         StringTemplate template = StringTemplate.label("")

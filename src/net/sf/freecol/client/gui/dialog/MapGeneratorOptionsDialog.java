@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -103,9 +103,7 @@ public final class MapGeneratorOptionsDialog extends OptionsDialog {
                 JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
             scrollPane.getVerticalScrollBar().setUnitIncrement(16);
             scrollPane.getViewport().setOpaque(false);
-            // FIXME: find out how to do this properly
-            scrollPane.setMinimumSize(new Dimension(400, 110));
-            panel.add(scrollPane);
+            panel.add(scrollPane, "height 80%, width 100%");
         }
         initialize(frame, choices());
     }
@@ -234,7 +232,7 @@ public final class MapGeneratorOptionsDialog extends OptionsDialog {
             if (width >= 4 * edge) {
                 ok = true;
             } else {
-                getGUI().showErrorMessage(StringTemplate
+                getGUI().showErrorPanel(StringTemplate
                     .template("mapGeneratorOptionsDialog.badWidth")
                     .addAmount("%width%", width)
                     .addAmount("%edge%", edge));
@@ -245,7 +243,7 @@ public final class MapGeneratorOptionsDialog extends OptionsDialog {
             logger.log(Level.WARNING, "Options in disarray", ex);
         }           
         if (!ok) {
-            getGUI().showErrorMessage(FreeCol.badFile("error.couldNotSave", file));
+            getGUI().showErrorPanel(FreeCol.badFile("error.couldNotSave", file));
             return false;
         }
         return super.save(file);

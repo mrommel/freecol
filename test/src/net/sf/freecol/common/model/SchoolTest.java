@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019  The FreeCol Team
+ *  Copyright (C) 2002-2022  The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -112,7 +112,7 @@ public class SchoolTest extends FreeColTestCase {
 
     public void testEducationOption() {
         Game game = getGame();
-        game.setMap(getTestMap(true));
+        game.changeMap(getTestMap(true));
 
         Colony colony = getStandardColony(5);
         Iterator<Unit> units = colony.getUnitList().iterator();
@@ -156,7 +156,7 @@ public class SchoolTest extends FreeColTestCase {
 
     public void testChangeTeachers() {
         Game game = getGame();
-        game.setMap(getTestMap());
+        game.changeMap(getTestMap());
 
         // Setup
         ColonyBuilder colBuilder = FreeColTestUtils.getColonyBuilder();

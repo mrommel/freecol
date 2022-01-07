@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -228,7 +228,7 @@ public class ServerBuilding extends Building implements TurnTaker {
                                               AbstractGoods::getType)) {
                     cs.addMessage(getOwner(),
                         new ModelMessage(ModelMessage.MessageType.MISSING_GOODS,
-                                         "model.building.noProduction",
+                                         "model.building.noInput",
                                          this, gt)
                             .addNamed("%inputGoods%", gt)
                             .addNamed("%building%", this)

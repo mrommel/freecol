@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FreeCol - {{ page.title }}</title>
+    <meta name="title" content="{{ page.title }}" />
+{% if page.author %}
+    <meta name="author" content="{{ page.author }}" />
+{% endif %}
+    <meta name="description" content="FreeCol - a turn based strategy game" />
+    <meta name="keywords" content="FreeCol, Colonization, Free Colonization Game, Colonization, Sid Meier's Colonization, Colonization 2, Microprose" />
+    <meta name="robots" content="index, follow" />
+
+    <link rel="icon" href="/images/favicon.ico" />
+    <link rel="stylesheet" type="text/css" href="/templates/freecol/css/template_css.css" />
+    <link rel="stylesheet" type="text/css" href="/templates/freecol/css/css_color_green.css" />
+</head>
+
+<body>
+<div id="pagewidth-800">
+    <header id="header">
+        <div id="top-top">
+        </div>
+        <div class="clr"></div>
+        <div id="top-bottom">
+            <a href="index.html"><img src="/templates/freecol/images/logo.png" border="0" width="600" height="89" alt="logo" /></a>
+        </div>
+    </header>
+    <div id="outer-800" >
+        <nav id="pathway">
+          <span class="pathway"><a href="/" class="pathway">Home</a>
+{% if page.folder %}
+            <img src="/images/M_images/arrow.png" alt="arrow" />
+            <a href="{{ page.folder.path }}" class="pathway">{{ page.folder.name }}</a>
+{% endif %}
+{% if page.subfolder %}
+            <img src="/images/M_images/arrow.png" alt="arrow" />
+            <a href="{{ page.subfolder.path }}" class="pathway">{{ page.subfolder.name }}</a>
+{% endif %}
+{% if page.title and page.title!="Home" %}
+            <img src="/images/M_images/arrow.png" alt="arrow" />
+            {{ page.title }}
+{% endif %}
+          </span>
+          <span class="pathway-right">
+            <a href="/sitemap.html"><img src="/templates/freecol/images/sitemap.png" border="0" width="14" height="16" alt="SITEMAP" /></a>
+          </span>
+        </nav>
+        <nav id="leftcol">
+            <div class="module">
+                <div>
+                    <div>
+                        <div>
+                            <h3>Main Menu</h3>
+                                <div class="mainmenu"><a href="/" class="mainlevel"{% if page.folder==nil %} id="active_menu"{% endif %}>Home</a></div>
+                                <div class="mainmenu"><a href="/news/" class="mainlevel"{% if page.folder and page.folder.name=="News" %} id="active_menu"{% endif %}>News</a></div>
+                                <div class="mainmenu"><a href="/about.html" class="mainlevel"{% if page.folder and page.folder.name=="About FreeCol" and page.title!="Current Status" and page.title!="A History of FreeCol's Development" and page.title!="Roadmap" and page.title!="Team and Credits" and page.title!="How to Contribute" and page.title!="Contact Information" %} id="active_menu"{% endif %}>About FreeCol</a></div>
+{% if page.folder and page.folder.name=="About FreeCol" %}
+                                    <div class="submenu"><a href="status.html" class="sublevel"{% if page.title=="Current Status" %} id="active_menu"{% endif %}>Current Status</a></div>
+                                    <div class="submenu"><a href="history.html" class="sublevel"{% if page.title=="A History of FreeCol's Development" %} id="active_menu"{% endif %}>History</a></div>
+                                    <div class="submenu"><a href="roadmap.html" class="sublevel"{% if page.title=="Roadmap" %} id="active_menu"{% endif %}>Roadmap</a></div>
+                                    <div class="submenu"><a href="team-and-credits.html" class="sublevel"{% if page.title=="Team and Credits" %} id="active_menu"{% endif %}>Team and Credits</a></div>
+                                    <div class="submenu"><a href="how-to-contribute.html" class="sublevel"{% if page.title=="How to Contribute" %} id="active_menu"{% endif %}>How to Contribute</a></div>
+                                    <div class="submenu"><a href="contact.html" class="sublevel"{% if page.title=="Contact Information" %} id="active_menu"{% endif %}>Contact Us</a></div>
+{% endif %}
+                                <div class="mainmenu"><a href="/documentation/" class="mainlevel"{% if page.folder and page.folder.name=="Documentation" and page.title!="FreeCol User Manual" and page.title!="Javadoc" and page.title!="Git Repository Usage" and page.title!="Subversion Repository Layout" and page.title!="Subversion Usage" and page.title!="Tracker Usage" %} id="active_menu"{% endif %}>Documentation</a></div>
+{% if page.folder and page.folder.name=="Documentation" %}
+                                    <div class="submenu"><a href="freecol-user-manual.html" class="sublevel"{% if page.title=="FreeCol User Manual" %} id="active_menu"{% endif %}>User Manual</a></div>
+                                    <div class="submenu"><a href="javadoc.html" class="sublevel"{% if page.title=="Javadoc" %} id="active_menu"{% endif %}>Javadoc</a></div>
+                                    <div class="submenu"><a href="git.html" class="sublevel"{% if page.title=="Git Repository Usage" %} id="active_menu"{% endif %}>Git Usage</a></div>
+                                    <div class="submenu"><a href="subversion-repository-layout.html" class="sublevel"{% if page.title=="Subversion Repository Layout" %} id="active_menu"{% endif %}>SVN Layout</a></div>
+                                    <div class="submenu"><a href="subversion.html" class="sublevel"{% if page.title=="Subversion Usage" %} id="active_menu"{% endif %}>SVN Usage</a></div>
+                                    <div class="submenu"><a href="trackers-use.html" class="sublevel"{% if page.title=="Tracker Usage" %} id="active_menu"{% endif %}>Tracker Usage</a></div>
+{% endif %}
+                                <div class="mainmenu"><a href="/screenshots.html" class="mainlevel"{% if page.folder and page.folder.name=="Screenshots" and page.title!="More Screenshots" %} id="active_menu"{% endif %}>Screenshots</a></div>
+{% if page.folder and page.folder.name=="Screenshots" %}
+                                    <div class="submenu"><a href="more-screenshots.html" class="sublevel"{% if page.title=="More Screenshots" %} id="active_menu"{% endif %}>More Screenshots</a></div>
+{% endif %}
+                                <div class="mainmenu"><a href="/art.html" class="mainlevel"{% if page.folder and page.folder.name=="Art" and page.title!="Units" and page.title!="Colonies" and page.title!="Goods" %} id="active_menu"{% endif %}>Art</a></div>
+{% if page.folder and page.folder.name=="Art" %}
+                                    <div class="submenu"><a href="art-units.html" class="sublevel"{% if page.title=="Units" %} id="active_menu"{% endif %}>Units</a></div>
+                                    <div class="submenu"><a href="art-colonies.html" class="sublevel"{% if page.title=="Colonies" %} id="active_menu"{% endif %}>Colonies</a></div>
+                                    <div class="submenu"><a href="art-goods.html" class="sublevel"{% if page.title=="Goods" %} id="active_menu"{% endif %}>Goods</a></div>
+{% endif %}
+                                <div class="mainmenu"><a href="/download.html" class="mainlevel"{% if page.folder and page.folder.name=="Download" %} id="active_menu"{% endif %}>Download</a></div>
+                                <div class="mainmenu"><a href="/community.html" class="mainlevel"{% if page.folder and page.folder.name=="Community" and page.title!="Web Links" %} id="active_menu"{% endif %}>Community</a></div>
+{% if page.folder and page.folder.name=="Community" %}
+                                    <div class="submenu"><a href="/links/" class="sublevel"{% if page.title=="Web Links" %} id="active_menu"{% endif %}>Links</a></div>
+{% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        <div id="maincol-wide-800" >
+            <div class="clr"></div>
+            <main class="content">
+{{ content }}
+            </main>
+{% if page.folder %}
+            <nav class="back_button">
+                <a href='javascript:history.go(-1)'>[ Back ]</a>
+            </nav>
+{% endif %}
+        </div>
+        <div class="clr"></div>
+    </div>
+    <div id="sflogo">
+        <a href="http://sourceforge.net"><img src="http://sflogo.sourceforge.net/sflogo.php?group_id=43225&amp;type=2" width="125" height="37" border="0" alt="SourceForge.net Logo" /></a>
+    </div>
+    <footer id="footer-800" >
+        <div align="center" class="footer-copyright">
+            &copy; 2002-2022 FreeCol - <a href="/contact.html">Contact Us</a>
+        </div>
+    </footer>
+</div>
+</body>
+</html>

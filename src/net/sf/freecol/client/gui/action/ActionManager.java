@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -21,11 +21,15 @@ package net.sf.freecol.client.gui.action;
 
 import java.util.logging.Logger;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import net.sf.freecol.client.FreeColClient;
 import net.sf.freecol.client.control.ConnectController;
 import net.sf.freecol.client.control.InGameController;
 import net.sf.freecol.client.gui.action.ColopediaAction.PanelType;
 import net.sf.freecol.client.gui.action.DisplayTileTextAction.DisplayText;
+import net.sf.freecol.client.gui.panel.UnitButton;
 import net.sf.freecol.common.model.Direction;
 import net.sf.freecol.common.model.Specification;
 import net.sf.freecol.common.model.TileImprovementType;
@@ -67,6 +71,14 @@ public class ActionManager extends OptionGroup {
      */
     public void initializeActions(InGameController inGameController,
                                   ConnectController connectController) {
+        /**
+         * Please note: Actions should only be created and not initialized
+         * with images etc. The reason being that initialization of actions
+         * are needed for the client options ... and the client options
+         * should be loaded before images are preloaded (the reason being that
+         * mods might change the images).
+         */
+        
         /**
          * Possible FIXME: should we put some of these, especially the
          * move and tile improvement actions, into OptionGroups of
@@ -196,7 +208,49 @@ public class ActionManager extends OptionGroup {
      *
      * @see FreeColAction
      */
+    @SuppressWarnings("rawtypes")
     public void update() {
         for (Option o : getOptions()) ((FreeColAction)o).update();
+    }
+
+    /**
+     * Make the buttons needed by the map controls for the mini map.
+     *
+     * @return A list of {@code UnitButton}s.
+     */
+    public List<UnitButton> makeMiniMapButtons() {
+        List<UnitButton> ret = new ArrayList<>();
+        ret.add(new UnitButton(this, MiniMapToggleViewAction.id));
+        ret.add(new UnitButton(this, MiniMapToggleFogOfWarAction.id));
+        ret.add(new UnitButton(this, MiniMapZoomOutAction.id));
+        ret.add(new UnitButton(this, MiniMapZoomInAction.id));
+        return ret;
+    }
+
+    /**
+     * Make the buttons needed by the map controls for unit actions.
+     *
+     * @param spec The {@code Specification} to query.
+     * @return A list of {@code UnitButton}s.
+     */
+    public List<UnitButton> makeUnitActionButtons(final Specification spec) {
+        List<UnitButton> ret = new ArrayList<>();
+        ret.add(new UnitButton(this, WaitAction.id));
+        ret.add(new UnitButton(this, SkipUnitAction.id));
+        ret.add(new UnitButton(this, SentryAction.id));
+        ret.add(new UnitButton(this, FortifyAction.id));
+            
+        if (spec != null) {
+            for (TileImprovementType ti : spec.getTileImprovementTypeList()) {
+                String id = ti.getSuffix() + "Action";
+                FreeColAction a = getFreeColAction(id);
+                if (a != null && a.hasOrderButtons() && !ti.isNatural()) {
+                    ret.add(new UnitButton(this, id));
+                }
+            }
+        }
+        ret.add(new UnitButton(this, BuildColonyAction.id));
+        ret.add(new UnitButton(this, DisbandUnitAction.id));
+        return ret;
     }
 }

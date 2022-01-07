@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -18,6 +18,8 @@
  */
 
 package net.sf.freecol.client.gui.panel;
+
+import static net.sf.freecol.common.util.StringUtils.join;
 
 import java.awt.AlphaComposite;
 import java.awt.Color;
@@ -43,8 +45,6 @@ import net.sf.freecol.client.gui.ImageLibrary;
 import net.sf.freecol.common.resources.FAFile;
 import net.sf.freecol.common.resources.ResourceManager;
 
-import static net.sf.freecol.common.util.StringUtils.*;
-
 
 /**
  * This panel displays the signing of the Declaration of Independence.
@@ -61,16 +61,23 @@ public final class DeclarationPanel extends FreeColPanel {
     private final int START_DELAY = 2000; // 2s before signing
     private final int ANIMATION_DELAY = 50; // 50ms between signature steps
     private final int FINISH_DELAY = 5000; // 5s before closing
+    
+    private final Runnable afterClosing;
+    private boolean closed = false;
 
 
     /**
      * Creates a DeclarationPanel.
      *
      * @param freeColClient The {@code FreeColClient} for the game.
+     * @param afterClosing A callback that is executed after the panel closes.
      */
-    public DeclarationPanel(FreeColClient freeColClient) {
+    public DeclarationPanel(FreeColClient freeColClient, Runnable afterClosing) {
         super(freeColClient);
 
+        this.afterClosing = afterClosing;
+        
+        setLayout(null);
         Image image = ImageLibrary.getUnscaledImage("image.flavor.Declaration");
         setSize(image.getWidth(null), image.getHeight(null));
         setOpaque(false);
@@ -78,13 +85,13 @@ public final class DeclarationPanel extends FreeColPanel {
         addKeyListener(new KeyAdapter() {
                 @Override
                 public void keyPressed(KeyEvent k) {
-                    getGUI().removeComponent(DeclarationPanel.this);
+                    closePanel();
                 }
             });
         addMouseListener(new MouseAdapter() {
                 @Override
                 public void mouseClicked(MouseEvent e) {
-                    getGUI().removeComponent(DeclarationPanel.this);
+                    closePanel();
                 }
             });
 
@@ -103,7 +110,6 @@ public final class DeclarationPanel extends FreeColPanel {
         t.start();
     }
 
-
     // Interface ActionListener
 
     /**
@@ -114,12 +120,22 @@ public final class DeclarationPanel extends FreeColPanel {
         final String command = ae.getActionCommand();
         if (ANIMATION_STOPPED.equals(command)) {
             Timer t = new Timer(FINISH_DELAY, (x) -> {
-                    getGUI().removeComponent(DeclarationPanel.this);
+                    closePanel();
                 });
             t.setRepeats(false);
             t.start();
         } else {
             super.actionPerformed(ae);
+        }
+    }
+    
+    private void closePanel() {
+        final boolean oldClosed = closed;
+        closed = true;
+        
+        if (!oldClosed) {
+            getGUI().removeComponent(DeclarationPanel.this);
+            afterClosing.run();
         }
     }
 

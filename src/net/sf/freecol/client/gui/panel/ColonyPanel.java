@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -18,6 +18,10 @@
  */
 
 package net.sf.freecol.client.gui.panel;
+
+import static net.sf.freecol.common.util.CollectionUtils.dump;
+import static net.sf.freecol.common.util.CollectionUtils.sort;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
 
 import java.awt.Color;
 import java.awt.Component;
@@ -57,7 +61,6 @@ import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingUtilities;
 
 import net.miginfocom.swing.MigLayout;
-
 import net.sf.freecol.client.ClientOptions;
 import net.sf.freecol.client.FreeColClient;
 import net.sf.freecol.client.gui.FontLibrary;
@@ -66,8 +69,7 @@ import net.sf.freecol.client.gui.ImageLibrary;
 import net.sf.freecol.client.gui.label.GoodsLabel;
 import net.sf.freecol.client.gui.label.ProductionLabel;
 import net.sf.freecol.client.gui.label.UnitLabel;
-import net.sf.freecol.client.gui.plaf.FreeColLookAndFeel;
-import net.sf.freecol.client.gui.tooltip.*;
+import net.sf.freecol.client.gui.tooltip.RebelToolTip;
 import net.sf.freecol.common.debug.DebugUtils;
 import net.sf.freecol.common.debug.FreeColDebugger;
 import net.sf.freecol.common.i18n.Messages;
@@ -94,7 +96,6 @@ import net.sf.freecol.common.model.Unit;
 import net.sf.freecol.common.model.UnitLocation.NoAddReason;
 import net.sf.freecol.common.model.UnitType;
 import net.sf.freecol.common.model.WorkLocation;
-import static net.sf.freecol.common.util.CollectionUtils.*;
 
 
 /**
@@ -252,13 +253,14 @@ public final class ColonyPanel extends PortPanel
      * @param colony The {@code Colony} to display in this panel.
      */
     public ColonyPanel(FreeColClient freeColClient, Colony colony) {
-        super(freeColClient,
-            new MigLayout("fill, wrap 2, insets 2",
-                          "[390!][fill]",
-                          "[growprio 100,shrinkprio 10][]0[]0[]"
-                          + "[growprio 150,shrinkprio 50]"
-                          + "[growprio 150,shrinkprio 50][]"));
+        super(freeColClient, new MigLayout());
 
+        getMigLayout().setLayoutConstraints("fill, wrap 2, insets 2");
+        getMigLayout().setColumnConstraints("[" + getTilesScrollGuiScaledDimension().width + "px!][fill]");
+        getMigLayout().setRowConstraints("[growprio 100,shrinkprio 10][]0[]0[]"
+                + "[growprio 150,shrinkprio 50]"
+                + "[][]");
+        
         final Player player = getMyPlayer();
         // Do not just use colony.getOwner() == getMyPlayer() because
         // in debug mode we are in the *server* colony, and the equality
@@ -329,27 +331,19 @@ public final class ColonyPanel extends PortPanel
         selectedUnitLabel = null;
 
         // Make the colony label
-        Font nameBoxFont = FontLibrary.createFont(FontLibrary.FontType.HEADER,
-            FontLibrary.FontSize.SMALL, getImageLibrary().getScaleFactor());
-        boolean incompatibleFont = false;
+        StringBuilder sb = new StringBuilder(32);
+        String compat = colony.getName();
         if (editable) {
             for (Colony c : player.getColonyList()) {
                 this.nameBox.addItem(c);
-                if(!incompatibleFont &&
-                    nameBoxFont.canDisplayUpTo(c.getName()) != -1) {
-                    incompatibleFont = true;
-                }
+                sb.append(c.getName());
             }
-        } else { // When spying, only add the given colony.
+        } else {
             this.nameBox.addItem(colony);
-            if(nameBoxFont.canDisplayUpTo(colony.getName()) != -1)
-                incompatibleFont = true;
+            sb.append(colony.getName());
         }
-        if(incompatibleFont) {
-            nameBoxFont = FontLibrary.createFont(FontLibrary.FontType.NORMAL,
-                FontLibrary.FontSize.SMALL,
-                getImageLibrary().getScaleFactor());
-        }
+        Font nameBoxFont = FontLibrary.getUnscaledFont("header-plain-big",
+                                                       compat);
         this.nameBox.setFont(nameBoxFont);
         this.nameBox.setSelectedItem(colony);
         this.nameBox.getInputMap().put(KeyStroke.getKeyStroke("LEFT"),
@@ -410,9 +404,7 @@ public final class ColonyPanel extends PortPanel
             JComponent.WHEN_IN_FOCUSED_WINDOW, nameIM);
 
         initialize(colony);
-        float scale = getImageLibrary().getScaleFactor();
-        getGUI().restoreSavedSize(this,
-            new Dimension(200 + (int)(scale*850), 200 + (int)(scale*525)));
+        getGUI().restoreSavedSize(this, new Dimension(1050, 725));
     }
 
 
@@ -423,6 +415,12 @@ public final class ColonyPanel extends PortPanel
      */
     private synchronized void setColony(Colony colony) {
         this.colony = colony;
+    }
+    
+    private Dimension getTilesScrollGuiScaledDimension() {
+        final int tilesScrollWidth = 3 * getImageLibrary().getTileSize().width;
+        final int tilesScrollHeight = 3 * getImageLibrary().getTileSize().height;
+        return new Dimension(tilesScrollWidth, tilesScrollHeight);
     }
 
     /**
@@ -487,11 +485,12 @@ public final class ColonyPanel extends PortPanel
         warehousePanel.initialize();
 
         add(this.nameBox, "height 42:, grow");
-        int tmp = (int)(ImageLibrary.ICON_SIZE.height
-            * gui.getImageLibrary().getScaleFactor());
+        int tmp = ImageLibrary.ICON_SIZE.height;
+        
+        final Dimension tilesScrollDimension = getTilesScrollGuiScaledDimension();
         add(netProductionPanel,
-            "grow, height " + (tmp+10) + ":" + (2*tmp+10) + ":" + (2*tmp+10));
-        add(tilesScroll, "width 390!, height 200!, top");
+            "grow, height " + (tmp+10) + ":" + (tmp+10) + ":" + (2*tmp+10));
+        add(tilesScroll, "width " + tilesScrollDimension.width + "px!, height " + tilesScrollDimension.height +"px!, top");
         add(buildingsScroll, "span 1 3, grow");
         add(populationPanel, "grow");
         add(constructionPanel, "grow, top");
@@ -721,7 +720,7 @@ public final class ColonyPanel extends PortPanel
             subMenu = new JMenuItem(menuTitle, unitIcon);
             subMenu.addActionListener((ActionEvent ae) -> {
                     unitMenu.addMenuItems(new UnitLabel(freeColClient, unit));
-                    unitMenu.show(getGUI().getCanvas(), 0, 0);
+                    getGUI().showPopupMenu(unitMenu, 0, 0);
                 });
             unitNumber++;
             colonyUnitsMenu.add(subMenu);
@@ -735,7 +734,7 @@ public final class ColonyPanel extends PortPanel
                 subMenu = new JMenuItem(menuTitle, unitIcon);
                 subMenu.addActionListener((ActionEvent ae) -> {
                         unitMenu.addMenuItems(new UnitLabel(freeColClient, unit));
-                        unitMenu.show(getGUI().getCanvas(), 0, 0);
+                        getGUI().showPopupMenu(unitMenu, 0, 0);
                     });
                 unitNumber++;
                 colonyUnitsMenu.add(subMenu);
@@ -747,7 +746,7 @@ public final class ColonyPanel extends PortPanel
                     subMenu = new JMenuItem(menuTitle, unitIcon);
                     subMenu.addActionListener((ActionEvent ae) -> {
                             unitMenu.addMenuItems(new UnitLabel(freeColClient, innerUnit));
-                            unitMenu.show(getGUI().getCanvas(), 0, 0);
+                            getGUI().showPopupMenu(unitMenu, 0, 0);
                         });
                     unitNumber++;
                     colonyUnitsMenu.add(subMenu);
@@ -759,7 +758,7 @@ public final class ColonyPanel extends PortPanel
                 subMenu = new JMenuItem(menuTitle, unitIcon);
                 subMenu.addActionListener((ActionEvent ae) -> {
                         unitMenu.addMenuItems(new UnitLabel(freeColClient, unit));
-                        unitMenu.show(getGUI().getCanvas(), 0, 0);
+                        getGUI().showPopupMenu(unitMenu, 0, 0);
                     });
                 unitNumber++;
                 colonyUnitsMenu.add(subMenu);
@@ -773,7 +772,7 @@ public final class ColonyPanel extends PortPanel
                 colonyUnitsMenu.remove(lastIndex);
             }
         }
-        colonyUnitsMenu.show(getGUI().getCanvas(), 0, 0);
+        getGUI().showPopupMenu(colonyUnitsMenu, 0, 0);
     }
 
     /**
@@ -901,8 +900,8 @@ public final class ColonyPanel extends PortPanel
         for (GoodsType goodsType : spec.getGoodsTypeList()) {
             int amount = colony.getAdjustedNetProductionOf(goodsType);
             if (amount != 0) {
-                netProductionPanel.add(new ProductionLabel(freeColClient,
-                        new AbstractGoods(goodsType, amount)));
+                AbstractGoods ag = new AbstractGoods(goodsType, amount);
+                netProductionPanel.add(new ProductionLabel(freeColClient, ag));
             }
         }
         netProductionPanel.revalidate();
@@ -957,20 +956,9 @@ public final class ColonyPanel extends PortPanel
         }
 
         cleanup();
-
         getGUI().removeComponent(this);
-        getGUI().updateMapControls();
-
-        // Talk to the controller last, allow all the cleanup to happen first.
-        if (abandon) igc().abandonColony(colony);
-        if (getFreeColClient().currentPlayerIsMyPlayer()) {
-            igc().nextModelMessage();
-            Unit activeUnit = getGUI().getActiveUnit();
-            if (activeUnit == null || !activeUnit.hasTile()
-                || (!activeUnit.isOnTile() && !activeUnit.isOnCarrier())) {
-                igc().nextActiveUnit();
-            }
-        }
+        // Abandon colony and active unit handling is in IGC
+        igc().closeColony(colony, abandon);
     }
 
 
@@ -1029,7 +1017,7 @@ public final class ColonyPanel extends PortPanel
             if (colony.getUnitCount() > 0) { // Ignore messages when abandoning
                 ModelMessage msg = colony.checkForGovMgtChangeMessage();
                 if (msg != null) {
-                    getGUI().showInformationMessage(colony, msg);
+                    getGUI().showInformationPanel(colony, msg);
                 }
             }
             updatePopulationPanel();
@@ -1039,7 +1027,7 @@ public final class ColonyPanel extends PortPanel
             FreeColGameObject object = (FreeColGameObject)event.getSource();
             UnitType oldType = (UnitType) event.getOldValue();
             UnitType newType = (UnitType) event.getNewValue();
-            getGUI().showInformationMessage(object, StringTemplate
+            getGUI().showInformationPanel(object, StringTemplate
                 .template("colonyPanel.unitChange")
                 .addName("%colony%", colony.getName())
                 .addNamed("%oldType%", oldType)
@@ -1192,9 +1180,8 @@ public final class ColonyPanel extends PortPanel
         public void update() {
             final Colony colony = getColony();
             if (colony == null) return;
-            final ImageLibrary lib = getGUI().getTileImageLibrary();
-            final Font font = FontLibrary.createFont(FontLibrary.FontType.NORMAL,
-                FontLibrary.FontSize.SMALLER, lib.getScaleFactor());
+            final ImageLibrary lib = getImageLibrary();
+            final Font font = FontLibrary.getUnscaledFont("normal-plain-smaller");
             final int uc = colony.getUnitCount();
             final int solPercent = colony.getSoL();
             final int rebels = Colony.calculateRebels(uc, solPercent);
@@ -1362,16 +1349,24 @@ public final class ColonyPanel extends PortPanel
          * {@inheritDoc}
          */
         @Override
-        public boolean accepts(Unit unit) {
-            return !unit.isCarrier();
+        public boolean accepts(Goods goods) {
+            return false;
         }
 
         /**
          * {@inheritDoc}
          */
         @Override
-        public boolean accepts(Goods goods) {
+        public boolean accepts(GoodsType goodsType) {
             return false;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public boolean accepts(Unit unit) {
+            return !unit.isCarrier();
         }
 
         /**
@@ -1569,7 +1564,8 @@ public final class ColonyPanel extends PortPanel
                 int count = colony.getGoodsCount(goodsType);
                 if (count >= threshold) {
                     Goods goods = new Goods(game, colony, goodsType, count);
-                    GoodsLabel goodsLabel = new GoodsLabel(getGUI(), goods);
+                    GoodsLabel goodsLabel
+                        = new GoodsLabel(getFreeColClient(), goods);
                     if (ColonyPanel.this.isEditable()) {
                         goodsLabel.setTransferHandler(defaultTransferHandler);
                         goodsLabel.addMouseListener(pressListener);
@@ -1589,7 +1585,15 @@ public final class ColonyPanel extends PortPanel
          * {@inheritDoc}
          */
         @Override
-        public boolean accepts(Unit unit) {
+        public boolean accepts(Goods goods) {
+            return true;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public boolean accepts(GoodsType goodsType) {
             return false;
         }
 
@@ -1597,8 +1601,8 @@ public final class ColonyPanel extends PortPanel
          * {@inheritDoc}
          */
         @Override
-        public boolean accepts(Goods goods) {
-            return true;
+        public boolean accepts(Unit unit) {
+            return false;
         }
 
         /**
@@ -1814,7 +1818,7 @@ public final class ColonyPanel extends PortPanel
                 Building building = getBuilding();
                 NoAddReason reason = building.getNoAddReason(unit);
                 if (reason != NoAddReason.NONE) {
-                    getGUI().showInformationMessage(building, reason.getDescriptionKey());
+                    getGUI().showInformationPanel(building, reason.getDescriptionKey());
                     return false;
                 }
 
@@ -1828,16 +1832,24 @@ public final class ColonyPanel extends PortPanel
              * {@inheritDoc}
              */
             @Override
-            public boolean accepts(Unit unit) {
-                return unit.isPerson();
+            public boolean accepts(Goods goods) {
+                return false;
             }
 
             /**
              * {@inheritDoc}
              */
             @Override
-            public boolean accepts(Goods goods) {
+            public boolean accepts(GoodsType goodsType) {
                 return false;
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public boolean accepts(Unit unit) {
+                return unit.isPerson();
             }
 
             /**
@@ -1889,7 +1901,12 @@ public final class ColonyPanel extends PortPanel
         /** The tiles around the colony. */
         private final Tile[][] tiles = new Tile[3][3];
 
+        /** A currently displayed production message. */
+        private FreeColPanel cachedPanel = null;
+        /** The work location that would be better to produce with. */
+        private WorkLocation bestLocation = null;
 
+        
         /**
          * Creates a TilesPanel.
          */
@@ -1920,8 +1937,8 @@ public final class ColonyPanel extends PortPanel
             tiles[2][2] = tile.getNeighbourOrNull(Direction.S);
 
             int layer = 2;
-            for (int x = 0; x < 3; x++) {
-                for (int y = 0; y < 3; y++) {
+            for (int x = 0; x < tiles.length; x++) {
+                for (int y = 0; y < tiles[x].length; y++) {
                     if (tiles[x][y] == null) {
                         logger.warning("Null tile for " + getColony()
                             + " at " + x + "," + y);
@@ -1968,7 +1985,25 @@ public final class ColonyPanel extends PortPanel
             repaint();
         }
 
+        /**
+         * Display the poor production message.
+         *
+         * @param best The better work location.
+         * @param template The {@code StringTemplate} with the message.
+         */
+        public void showPoorProduction(WorkLocation best,
+                                       StringTemplate template) {
+            // Already warned about this?  Do nothing if so.
+            if (this.bestLocation == best) return;
+            
+            if (this.cachedPanel != null) {
+                getGUI().removeComponent(this.cachedPanel);
+            }
+            this.cachedPanel = getGUI().showInformationPanel(best, template);
+            this.bestLocation = best;
+        }
 
+            
         // Override JComponent
 
         /**
@@ -1976,12 +2011,13 @@ public final class ColonyPanel extends PortPanel
          */
         @Override
         public void paintComponent(Graphics g) {
-            final Colony colony = getColony();
             g.setColor(Color.BLACK);
             g.fillRect(0, 0, getWidth(), getHeight());
-            if (colony == null) return;
 
-            getGUI().displayColonyTiles((Graphics2D)g, tiles, colony);
+            final Colony colony = getColony();
+            if (colony != null) {
+                getGUI().displayColonyTiles((Graphics2D)g, tiles, colony);
+            }
         }
 
         /**
@@ -2009,8 +2045,7 @@ public final class ColonyPanel extends PortPanel
                 setLayout(new FlowLayout(FlowLayout.CENTER, 0, 0));
                 setOpaque(false);
                 // Size and position:
-                Dimension size = getGUI().getTileImageLibrary()
-                    .scale(ImageLibrary.TILE_SIZE);
+                Dimension size = getImageLibrary().getTileSize();
                 setSize(size);
                 setLocation(((2 - x) + y) * size.width / 2,
                     (x + y) * size.height / 2);
@@ -2074,7 +2109,7 @@ public final class ColonyPanel extends PortPanel
                 final FreeColClient fcc = getFreeColClient();
                 UnitLabel label = null;
                 for (Unit unit : this.colonyTile.getUnitList()) {
-                    label = new UnitLabel(fcc, unit, false, false, true);
+                    label = new UnitLabel(fcc, unit, false, false);
                     if (ColonyPanel.this.isEditable()) {
                         label.setTransferHandler(defaultTransferHandler);
                         label.addMouseListener(pressListener);
@@ -2084,13 +2119,12 @@ public final class ColonyPanel extends PortPanel
                 updateDescriptionLabel(label);
                 if (this.colonyTile.isColonyCenterTile()) {
                     setLayout(new GridLayout(2, 1));
-                    final ImageLibrary til = getGUI().getTileImageLibrary();
                     ProductionInfo info
                         = colony.getProductionInfo(this.colonyTile);
                     if (info != null) {
                         for (AbstractGoods ag : info.getProduction()) {
                             ProductionLabel productionLabel
-                                = new ProductionLabel(fcc, til, ag);
+                                = new ProductionLabel(fcc, ag);
                             productionLabel.addMouseListener(pressListener);
                             add(productionLabel);
                         }
@@ -2157,7 +2191,7 @@ public final class ColonyPanel extends PortPanel
                         }
                         break;
                     default: // Otherwise, can not use land
-                        getGUI().showInformationMessage(tile, claim.getDescriptionKey());
+                        getGUI().showInformationPanel(tile, claim.getDescriptionKey());
                         return false;
                     }
                     // Check reason again, claim should be satisfied.
@@ -2169,7 +2203,7 @@ public final class ColonyPanel extends PortPanel
                 // Claim sorted, but complain about other failure.
                 NoAddReason reason = this.colonyTile.getNoAddReason(unit);
                 if (reason != NoAddReason.NONE) {
-                    getGUI().showInformationMessage(this.colonyTile,
+                    getGUI().showInformationPanel(this.colonyTile,
                         StringTemplate.template(reason.getDescriptionKey()));
                     return false;
                 }
@@ -2190,7 +2224,7 @@ public final class ColonyPanel extends PortPanel
                                 unit.getLabel(Unit.UnitLabelType.NATIONAL))
                             .addNamed("%goods%", workType)
                             .addStringTemplate("%tile%", best.getLabel());
-                        getGUI().showInformationMessage(best, template);
+                        showPoorProduction(best, template);
                     }
                 }
                 return true;
@@ -2201,25 +2235,10 @@ public final class ColonyPanel extends PortPanel
 
             /**
              * {@inheritDoc}
-             *
-             * @return - <b>true</b> if the specified {@code Unit} is a person,
-             *           <b>false</b> otherwise
-             *
-             * @see net.sf.freecol.common.model.Ability#PERSON
              */
             @Override
             public boolean accepts(Unit unit) {
                 return unit.isPerson();
-            }
-
-            /**
-             * {@inheritDoc}
-             *
-             * @return <b>false</b>, always
-             */
-            @Override
-            public boolean accepts(Goods goods) {
-                return false;
             }
 
             /**
@@ -2242,12 +2261,6 @@ public final class ColonyPanel extends PortPanel
                 update();
                 return comp;
             }
-
-            /**
-             * {@inheritDoc}
-             */
-            @Override
-            public int suggested(GoodsType type) { return -1; } // N/A
 
 
             // Interface PropertyChangeListener
@@ -2275,6 +2288,7 @@ public final class ColonyPanel extends PortPanel
              *
              * @param px The x coordinate to check.
              * @param py The y coordinate to check.
+             * @return true if the coordinate is inside.
              */
             @Override
             public boolean contains(int px, int py) {

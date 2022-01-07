@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-    *  Copyright (C) 2002-2019  The FreeCol Team
+    *  Copyright (C) 2002-2022  The FreeCol Team
     *
     *  This file is part of FreeCol.
     *
@@ -4660,6 +4660,9 @@
         <!-- Whether to educate the least skilled unit first -->
         <booleanOption id="model.option.allowStudentSelection"
                        defaultValue="false"/>
+        <!-- Claim all available tiles on colony foundation. -->
+        <booleanOption id="model.option.claimAllTiles"
+                       defaultValue="true" />
         <!-- Enable upkeep requirement on buildings. -->
         <booleanOption id="model.option.enableUpkeep"
                        defaultValue="false"/>

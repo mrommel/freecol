@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019  The FreeCol Team
+ *  Copyright (C) 2002-2022  The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -46,7 +46,7 @@ public class PathfindingTest extends FreeColTestCase {
     public void testComposedGoalDeciders() {
         final Game game = getStandardGame();
         final Map map = getCoastTestMap(plainsType, true);
-        game.setMap(map);
+        game.changeMap(map);
 
         final Player dutch = game.getPlayerByNationId("model.nation.dutch");
         PathNode path;

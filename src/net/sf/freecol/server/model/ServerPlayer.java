@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -1135,6 +1135,13 @@ public class ServerPlayer extends Player implements TurnTaker {
                 leftOver.add(unit);
             }
         }
+        if (leftOver.isEmpty()) {
+            lb.add("no leftovers.");
+        } else {
+            lb.add("leftover");
+            for (Unit u: leftOver) lb.add(" ", u);
+            lb.add(".");
+        }
         lb.log(logger, Level.FINEST);
         return leftOver;
     }
@@ -1200,7 +1207,7 @@ public class ServerPlayer extends Player implements TurnTaker {
             // Always break up into chunks, so the price can adjust
             // dynamically during large transactions, avoiding
             // exploitable market manipulation.
-            int a =  (amount <= GoodsContainer.CARGO_SIZE) ? amount
+            int a = (amount <= GoodsContainer.CARGO_SIZE) ? amount
                 : GoodsContainer.CARGO_SIZE;
             int price = market.getBidPrice(type, a);
             if (!checkGold(price)) {
@@ -2806,7 +2813,8 @@ outer:  for (Effect effect : effects) {
         // tiles, and process possible increase in line of sight.
         // No need to display the colony tile or the attacker tile to
         // the attacking player as the unit is yet to move
-        colony.csChangeOwner(attackerPlayer, true, cs);//-til,-vis(attackerPlayer,colonyPlayer)
+        colony.csChangeOwner(attackerPlayer, true, UnitChangeType.CAPTURE,
+                             cs);//-til,-vis(attackerPlayer,colonyPlayer)
         cs.addAttribute(See.only(attackerPlayer), "sound",
                         "sound.event.captureColony");
 
@@ -2833,8 +2841,7 @@ outer:  for (Effect effect : effects) {
         ServerUnit convert = (ServerUnit)getRandomMember(logger,
             "Choose convert", is.getAllUnitsList(), random);
         if (((ServerPlayer)nativePlayer).csChangeOwner(convert, attackerPlayer,
-                UnitChangeType.CONVERSION,
-                attacker.getTile(),
+                UnitChangeType.CONVERSION, attacker.getTile(),
                 cs)) { //-vis(attackerPlayer)
             convert.changeRole(spec.getDefaultRole(), 0);
             for (Goods g : convert.getCompactGoodsList()) convert.removeGoods(g);
@@ -2938,10 +2945,8 @@ outer:  for (Effect effect : effects) {
         // as it might be destroyed on capture.
         final Tile oldTile = loser.getTile();
         String key;
-        String change = (winnerPlayer.isUndead()) ? UnitChangeType.UNDEAD
-            : UnitChangeType.CAPTURE;
         if (((ServerPlayer)loserPlayer).csChangeOwner(loser, winnerPlayer,
-                change, winner.getTile(), cs)) {//-vis(both)
+                UnitChangeType.CAPTURE, winner.getTile(), cs)) {//-vis(both)
             loser.setMovesLeft(0);
             loser.setState(Unit.UnitState.ACTIVE);
             cs.add(See.perhaps().always(loserPlayer), oldTile);
@@ -4243,6 +4248,8 @@ outer:  for (Effect effect : effects) {
         if (newOwner == this) return true; // No transfer needed
 
         final Tile oldTile = unit.getTile();
+        // Undead can not avoid a change override!
+        if (newOwner.isUndead()) change = UnitChangeType.UNDEAD;
         if (change != null) {
             UnitType mainType = unit.getType();
             UnitTypeChange uc;
@@ -4365,6 +4372,32 @@ outer:  for (Effect effect : effects) {
         case REJECT_TRADE: default:
             session.complete(false, cs);
             break;
+        }
+    }
+
+    /**
+     * Things to do just before ending the turn for a player.
+     *
+     * @param cs A {@code ChangeSet} to update.
+     */
+    public void csEndTurn(ChangeSet cs) {
+        // Add free buildings.  LaSalle grants these directly, but
+        // colonies can become eligible for a free building when
+        // captured, or the building is destroyed by natives,
+        // disasters, pirates?, etc.  We decided this was best done at
+        // the end of turn:
+        //   * Col1 allows you to remove units from a freshly captured
+        //     colony so it is *not* eligible for a stockade, allowing
+        //     you to sidestep the abandonment restriction.  The stockade
+        //     appears after you close the colony panel that pops up on
+        //     capture, but that level of GUI coupling is undesirable.
+        //   * A bit of delay seems sensible, as it allows the colonists
+        //     some time to do the building
+        //
+        for (BuildingType bt : getFreeBuildingTypes()) {
+            for (Colony c : getColonyList()) {
+                ((ServerColony)c).csFreeBuilding(bt, cs);
+            }
         }
     }
 

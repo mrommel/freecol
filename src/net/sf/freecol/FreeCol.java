@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -19,7 +19,17 @@
 
 package net.sf.freecol;
 
+import static net.sf.freecol.common.util.CollectionUtils.alwaysTrue;
+import static net.sf.freecol.common.util.CollectionUtils.find;
+import static net.sf.freecol.common.util.CollectionUtils.map;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+import static net.sf.freecol.common.util.StringUtils.upCase;
+
 import java.awt.Dimension;
+import java.awt.GraphicsDevice;
+import java.awt.GraphicsEnvironment;
+import java.awt.Toolkit;
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -33,50 +43,49 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 
+import javax.swing.SwingUtilities;
 import javax.xml.stream.XMLStreamException;
 
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
+
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.sf.freecol.client.ClientOptions;
 import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.SplashScreen;
 import net.sf.freecol.common.FreeColException;
 import net.sf.freecol.common.FreeColSeed;
 import net.sf.freecol.common.debug.FreeColDebugger;
 import net.sf.freecol.common.i18n.Messages;
 import net.sf.freecol.common.io.FreeColDirectories;
-import net.sf.freecol.common.io.FreeColSavegameFile;
 import net.sf.freecol.common.io.FreeColModFile;
+import net.sf.freecol.common.io.FreeColSavegameFile;
 import net.sf.freecol.common.io.FreeColTcFile;
 import net.sf.freecol.common.logging.DefaultHandler;
-import static net.sf.freecol.common.model.Constants.*;
+import net.sf.freecol.common.model.Constants.IntegrityType;
 import net.sf.freecol.common.model.NationOptions.Advantages;
 import net.sf.freecol.common.model.Specification;
 import net.sf.freecol.common.model.StringTemplate;
 import net.sf.freecol.common.option.OptionGroup;
-import static net.sf.freecol.common.util.CollectionUtils.*;
 import net.sf.freecol.common.util.LogBuilder;
 import net.sf.freecol.common.util.OSUtils;
-import static net.sf.freecol.common.util.StringUtils.*;
 import net.sf.freecol.common.util.Utils;
 import net.sf.freecol.server.FreeColServer;
 import net.sf.freecol.server.control.Controller;
-
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.HelpFormatter;
-import org.apache.commons.cli.Option;
-import org.apache.commons.cli.Options;
-import org.apache.commons.cli.ParseException;
-import org.apache.commons.cli.DefaultParser;
-
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 
 /**
@@ -237,7 +246,7 @@ public final class FreeCol {
     
    
     private FreeCol() {} // Hide constructor
-
+    private static List<BufferedImage> l = new ArrayList<>();
     /**
      * The entrypoint.
      *
@@ -246,6 +255,7 @@ public final class FreeCol {
     public static void main(String[] args) {
         freeColRevision = FREECOL_VERSION;
         JarURLConnection juc;
+        
         try {
             juc = getJarURLConnection(FreeCol.class);
         } catch (ClassCastException cce) {
@@ -594,7 +604,7 @@ public final class FreeCol {
         { "a", "advantages", getAdvantagesDescription(), "cli.arg.advantages" },
         { null,  "check-savegame", "cli.check-savegame", argFile },
         { "O", "clientOptions", "cli.clientOptions", "cli.arg.clientOptions" },
-        { "D", "debug", getDebugDescription(), "cli.arg.debug" },
+        { null, "debug", getDebugDescription(), "cli.arg.debug" },
         { "R", "debug-run", "cli.debug-run", "cli.arg.debugRun" },
         { "S", "debug-start", "cli.debug-start", null },
         { "D", "difficulty", "cli.difficulty", "cli.arg.difficulty" },
@@ -835,9 +845,9 @@ public final class FreeCol {
                 }
             }
 
-            if (line.hasOption("seed")) {
-                FreeColSeed.setFreeColSeed(line.getOptionValue("seed"));
-            }
+            boolean seeded = (line.hasOption("seed")
+                && FreeColSeed.setFreeColSeed(line.getOptionValue("seed")));
+            if (!seeded) FreeColSeed.generateFreeColSeed();
 
             if (line.hasOption("splash")) {
                 String splash = line.getOptionValue("splash");
@@ -1299,6 +1309,9 @@ public final class FreeCol {
      * @return The host name.
      */
     public static String getServerHost() {
+        try {
+            return InetAddress.getLocalHost().getHostAddress();
+        } catch (Exception e) {}
         return InetAddress.getLoopbackAddress().getHostAddress();
     }
 
@@ -1414,7 +1427,7 @@ public final class FreeCol {
     private static void setWindowSize(String arg) {
         windowSize = WINDOWSIZE_FALLBACK; // Set fallback up front
         if (arg != null) {
-            String[] xy =arg.split("[^0-9]");
+            String[] xy = arg.split("[^0-9]");
             if (xy.length == 2) {
                 try {
                     windowSize = new Dimension(Integer.parseInt(xy[0]),
@@ -1507,6 +1520,7 @@ public final class FreeCol {
             .append((save == null) ? "NONE" : save.getPath())
             .append("\n  userMods:   ")
             .append((userMods == null) ? "NONE" : userMods.getPath())
+            .append("\n  seed:       ").append(FreeColSeed.getFreeColSeed())
             .append("\n  debug:      ")
             .append(FreeColDebugger.getDebugModes());
         return sb;
@@ -1519,26 +1533,70 @@ public final class FreeCol {
      * Start a client.
      */
     private static void startClient() {
-        Specification spec = null;
-        File savegame = FreeColDirectories.getSavegameFile();
-        if (debugStart) {
-            spec = FreeCol.getTCSpecification();
-        } else if (fastStart) {
-            if (savegame == null) {
-                // continue last saved game if possible,
-                // otherwise start a new one
-                savegame = FreeColDirectories.getLastSaveGameFile();
-                if (savegame == null) {
+        SwingUtilities.invokeLater(() -> {
+            /*
+             * Please do NOT move the splash screen into SwingGUI again. Make a separate
+             * interface if this needs to be pluggable.
+             * 
+             * The Swing-classes need to be constructed in the EDT -- and the splash screen
+             * is never displayed correctly if SwingGUI is loaded correctly in the EDT.
+             * 
+             * In addition, the splash screen should not be displayed at the same time
+             * as a fullscreen frame.
+             */
+            
+            final SplashScreen splashScreen = createSplashScreen();
+            SwingUtilities.invokeLater(() -> {
+                Specification spec = null;
+                File savegame = FreeColDirectories.getSavegameFile();
+                if (debugStart) {
                     spec = FreeCol.getTCSpecification();
+                } else if (fastStart) {
+                    if (savegame == null) {
+                        // continue last saved game if possible,
+                        // otherwise start a new one
+                        savegame = FreeColDirectories.getLastSaveGameFile();
+                        if (savegame == null) {
+                            spec = FreeCol.getTCSpecification();
+                        }
+                    }
+                    // savegame was specified on command line
                 }
-            }
-            // savegame was specified on command line
-        }
+                
+                new FreeColClient(splashScreen, fontName,
+                                      guiScale, windowSize,
+                                      (String)null, sound, introVideo, savegame, spec);
+            });
+        });
+        
 
-        final FreeColClient freeColClient
-            = new FreeColClient(splashStream, fontName, guiScale);
-        freeColClient.startClient(windowSize, null, sound, introVideo,
-                                  savegame, spec);
+    }
+
+    private static SplashScreen createSplashScreen() {
+        SplashScreen splashScreen = null;
+        if (splashStream != null) {
+            try {
+                final GraphicsDevice defaultScreenDevice = Utils.getGoodGraphicsDevice();
+                splashScreen = new SplashScreen(defaultScreenDevice, splashStream);
+                splashScreen.setVisible(true);
+            } catch (Exception e) {
+                logger.log(Level.WARNING, "Splash screen failure", e);
+            }
+        }
+        return splashScreen;
+    }
+
+    /**
+     * Wrapper for the test suite to start a test client.
+     *
+     * @param spec The {@code Specification} to use in the new client.
+     * @return The new {@code FreeColClient}.
+     */
+    public static FreeColClient startTestClient(Specification spec) {
+        FreeCol.setHeadless(true);
+        return new FreeColClient(null, (String)null,
+                                 FreeCol.GUI_SCALE_DEFAULT, (Dimension)null,
+                                 (String)null, false, false, (File)null, spec);
     }
 
     /**

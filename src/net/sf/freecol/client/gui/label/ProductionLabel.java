@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -21,7 +21,6 @@ package net.sf.freecol.client.gui.label;
 
 import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Image;
@@ -34,8 +33,6 @@ import net.sf.freecol.FreeCol;
 import net.sf.freecol.client.ClientOptions;
 import net.sf.freecol.client.FreeColClient;
 import net.sf.freecol.client.gui.FontLibrary;
-import net.sf.freecol.client.gui.FontLibrary.FontSize;
-import net.sf.freecol.client.gui.FontLibrary.FontType;
 import net.sf.freecol.client.gui.ImageLibrary;
 import net.sf.freecol.common.i18n.Messages;
 import net.sf.freecol.common.model.AbstractGoods;
@@ -76,6 +73,7 @@ public final class ProductionLabel extends AbstractGoodsLabel {
         this(freeColClient, ag, -1);
     }
 
+
     /**
      * Creates a new production label.
      *
@@ -84,8 +82,8 @@ public final class ProductionLabel extends AbstractGoodsLabel {
      * @param maximumProduction The maximum production.
      */
     public ProductionLabel(FreeColClient freeColClient, AbstractGoods ag,
-                           int maximumProduction) {
-        this(freeColClient, ag, maximumProduction, -1);
+            int maximumProduction) {
+        this(freeColClient, ag, maximumProduction, 0, false);
     }
 
     /**
@@ -95,39 +93,13 @@ public final class ProductionLabel extends AbstractGoodsLabel {
      * @param ag The {@code AbstractGoods} to create a label for.
      * @param maximumProduction The maximum production.
      * @param stockNumber The lower bound on number of items to display.
+     * @param showStockAmount Should the stockNumber be part of the label
      */
     public ProductionLabel(FreeColClient freeColClient, AbstractGoods ag,
-                           int maximumProduction, int stockNumber) {
-        this(freeColClient,freeColClient.getGUI().getImageLibrary(), ag,
-             maximumProduction, stockNumber);
-    }
+            int maximumProduction, int stockNumber, boolean showStockAmount) {
+        super(freeColClient, ag);
 
-    /**
-     * Creates a new production label.
-     *
-     * @param freeColClient The {@code FreeColClient} for the game.
-     * @param lib The {@code ImageLibrary} to use for the label.
-     * @param ag The {@code AbstractGoods} to create a label for.
-     */
-    public ProductionLabel(FreeColClient freeColClient, ImageLibrary lib,
-                           AbstractGoods ag) {
-        this(freeColClient, lib, ag, -1, -1);
-    }
-
-    /**
-     * Creates a new production label.
-     *
-     * @param freeColClient The {@code FreeColClient} for the game.
-     * @param lib The {@code ImageLibrary} to use for the label.
-     * @param ag The {@code AbstractGoods} to create a label for.
-     * @param maximumProduction The maximum production.
-     * @param stockNumber The lower bound on number of items to display.
-     */
-    private ProductionLabel(FreeColClient freeColClient, ImageLibrary lib,
-                            AbstractGoods ag,
-                            int maximumProduction, int stockNumber) {
-        super(lib, ag);
-
+        final ImageLibrary lib = getImageLibrary();
         if (getType() == null) {
             FreeCol.trace(logger, "Bad production label (no type)");
         } else if (stockNumber < 0 && getAmount() == 0) {
@@ -147,8 +119,7 @@ public final class ProductionLabel extends AbstractGoodsLabel {
         this.compressedWidth = (this.goodsIcon == null) ? 0
             : this.goodsIcon.getIconWidth() * 2;
 
-        setFont(FontLibrary.createFont(FontType.SIMPLE,
-                FontSize.TINY, Font.BOLD, lib.getScaleFactor()));
+        setFont(FontLibrary.getUnscaledFont("simple-bold-tiny"));
         setForeground((getAmount() < 0) ? Color.RED : Color.WHITE);
         setToolTipText((getType() == null || getAmount() == 0) ? null
             : Messages.message(getAbstractGoods().getLabel()));
@@ -160,7 +131,8 @@ public final class ProductionLabel extends AbstractGoodsLabel {
         if (amount < 0 || amount >= displayNumber || amount > maxIcons
                 || stockNumber > 0 || showMax) {
             String number = "";
-            if (stockNumber >= 0) { // Show stored items in ReportColonyPanel
+            if (showStockAmount && stockNumber >= 0) { // Show stored items in
+                                                       // ReportColonyPanel
                 number = String.valueOf(stockNumber);
                 drawPlus = true;
             }

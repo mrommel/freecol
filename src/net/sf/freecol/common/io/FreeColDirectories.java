@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2019   The FreeCol Team
+ *  Copyright (C) 2002-2022   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -139,6 +139,8 @@ public class FreeColDirectories {
     public static final String GAME_OPTIONS_FILE_NAME = "game_options.xml";
 
     public static final String MAP_FILE_NAME = "my_map.fsg";
+
+    public static final String MAP_EDITOR_FILE_NAME = "my_map.fsm";
 
     public static final String MAP_GENERATOR_OPTIONS_FILE_NAME
         = "map_generator_options.xml";
@@ -405,13 +407,14 @@ public class FreeColDirectories {
         File prefsDir = new File(libDir, "Preferences");
         if (!isGoodDirectory(prefsDir)) return badDir(prefsDir);
         File d = new File(prefsDir, FREECOL_DIRECTORY);
-        if (!isGoodDirectory(d)) return badConfig(d);
-        dirs[0] = d;
+        File d2 = requireDirectory(d);
+        if (d2 == null) return badConfig(d);
+        dirs[0] = d2;
 
         File appsDir = new File(libDir, "Application Support");
         if (!isGoodDirectory(appsDir)) return badDir(appsDir);
         d = new File(appsDir, FREECOL_DIRECTORY);
-        File d2 = requireDirectory(d);
+        d2 = requireDirectory(d);
         if (d2 == null) return badData(d);
         dirs[1] = dirs[2] = d2;
 
@@ -976,7 +979,8 @@ public class FreeColDirectories {
     public static Writer getLogCommsWriter() throws FreeColException {
         Writer writer = commsWriter.get();
         if (writer == null) {
-            File file = new File(getUserCacheDirectory(), LOG_COMMS_FILE_NAME);
+            File file = new File(getUserCacheDirectory(),
+                FreeCol.getName() + "-" + LOG_COMMS_FILE_NAME);
             if (file.exists()) deleteFile(file);
             writer = getFileUTF8AppendWriter(file);
             if (writer == null) {
