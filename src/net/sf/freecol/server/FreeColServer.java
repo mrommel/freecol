@@ -19,11 +19,18 @@
 
 package net.sf.freecol.server;
 
+import static net.sf.freecol.common.util.CollectionUtils.count;
+import static net.sf.freecol.common.util.CollectionUtils.matchKeyEquals;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+import static net.sf.freecol.common.util.Utils.delay;
+import static net.sf.freecol.common.util.Utils.deleteFile;
+import static net.sf.freecol.common.util.Utils.garbageCollect;
+import static net.sf.freecol.common.util.Utils.getRandomState;
+import static net.sf.freecol.common.util.Utils.restoreRandomState;
+
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.net.BindException;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
@@ -33,7 +40,6 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Random;
-import java.util.Timer;
 import java.util.function.Predicate;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
@@ -53,19 +59,16 @@ import net.sf.freecol.common.io.FreeColXMLReader;
 import net.sf.freecol.common.io.FreeColXMLWriter;
 import net.sf.freecol.common.metaserver.MetaServerUtils;
 import net.sf.freecol.common.metaserver.ServerInfo;
-import static net.sf.freecol.common.model.Constants.*;
-import net.sf.freecol.common.model.FreeColObject;
+import net.sf.freecol.common.model.Constants.IntegrityType;
 import net.sf.freecol.common.model.Game;
 import net.sf.freecol.common.model.Game.LogoutReason;
 import net.sf.freecol.common.model.IndianSettlement;
 import net.sf.freecol.common.model.Map;
 import net.sf.freecol.common.model.Nation;
-import net.sf.freecol.common.model.NationOptions;
 import net.sf.freecol.common.model.NationOptions.NationState;
 import net.sf.freecol.common.model.Player;
-import net.sf.freecol.common.model.Stance;
 import net.sf.freecol.common.model.Specification;
-import net.sf.freecol.common.model.StringTemplate;
+import net.sf.freecol.common.model.Stance;
 import net.sf.freecol.common.model.Tension;
 import net.sf.freecol.common.model.Unit;
 import net.sf.freecol.common.networking.ChangeSet;
@@ -76,13 +79,10 @@ import net.sf.freecol.common.networking.LogoutMessage;
 import net.sf.freecol.common.networking.Message;
 import net.sf.freecol.common.networking.TrivialMessage;
 import net.sf.freecol.common.networking.VacantPlayersMessage;
-import net.sf.freecol.common.option.BooleanOption;
 import net.sf.freecol.common.option.GameOptions;
 import net.sf.freecol.common.option.MapGeneratorOptions;
 import net.sf.freecol.common.option.OptionGroup;
-import static net.sf.freecol.common.util.CollectionUtils.*;
 import net.sf.freecol.common.util.LogBuilder;
-import static net.sf.freecol.common.util.Utils.*;
 import net.sf.freecol.server.ai.AIInGameInputHandler;
 import net.sf.freecol.server.ai.AIMain;
 import net.sf.freecol.server.ai.AIPlayer;
@@ -93,9 +93,7 @@ import net.sf.freecol.server.control.ServerInputHandler;
 import net.sf.freecol.server.control.UserConnectionHandler;
 import net.sf.freecol.server.generator.MapGenerator;
 import net.sf.freecol.server.generator.SimpleMapGenerator;
-import net.sf.freecol.server.generator.TerrainGenerator;
 import net.sf.freecol.server.model.ServerGame;
-import net.sf.freecol.server.model.ServerIndianSettlement;
 import net.sf.freecol.server.model.ServerPlayer;
 import net.sf.freecol.server.model.Session;
 import net.sf.freecol.server.networking.DummyConnection;
@@ -168,7 +166,28 @@ public final class FreeColServer {
     public static final String DEFAULT_SPEC = "freecol";
 
     /** The server is either starting, loading, being played, or ending. */
-    public static enum ServerState { PRE_GAME, LOAD_GAME, IN_GAME, END_GAME }
+    public static enum ServerState {
+        PRE_GAME(0),
+        LOAD_GAME(0),
+        IN_GAME(1),
+        END_GAME(2);
+        
+        private int metaServerState;
+        
+        private ServerState(int metaServerState) {
+            this.metaServerState = metaServerState;
+        }
+        
+        /*
+         * XXX: Gets the number used for server state being
+         *      published to the meta server. Using these
+         *      numbers as they are already in the translation
+         *      files -- but we should use named keys instead. 
+         */
+        public int getMetaServerState() {
+            return metaServerState;
+        }
+     }
 
 
     // Serializable fundamentals
@@ -1335,11 +1354,12 @@ public final class FreeColServer {
         int slots = count(getGame().getLiveEuropeanPlayers(), absentAI);
         int players = count(getGame().getLiveEuropeanPlayers(), liveHuman);
         return new ServerInfo(getName(),
-                              null, -1, // Missing these at this point
+                              getHost(),
+                              getPort(),
                               slots, players,
                               this.serverState == ServerState.IN_GAME,
                               FreeCol.getVersion(),
-                              getServerState().ordinal());
+                              getServerState().getMetaServerState());
     }
 
     /**
@@ -1350,7 +1370,6 @@ public final class FreeColServer {
     public synchronized boolean registerWithMetaServer() {
         if (!this.publicServer) return false;
         boolean ret = MetaServerUtils.registerServer(getServerInfo());
-        if (!ret) this.publicServer = false;
         return ret;
     }
 
@@ -1362,7 +1381,6 @@ public final class FreeColServer {
     public synchronized boolean removeFromMetaServer() {
         if (!this.publicServer) return false;
         boolean ret = MetaServerUtils.removeServer(getServerInfo());
-        if (!ret) this.publicServer = false;
         return ret;
     }
 
@@ -1374,7 +1392,6 @@ public final class FreeColServer {
     public synchronized boolean updateMetaServer() {
         if (!this.publicServer) return false;
         boolean ret = MetaServerUtils.updateServer(getServerInfo());
-        if (!ret) this.publicServer = false;
         return ret;
     }
 }

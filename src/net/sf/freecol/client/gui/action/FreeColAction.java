@@ -20,7 +20,6 @@
 package net.sf.freecol.client.gui.action;
 
 import java.awt.event.ActionEvent;
-import java.awt.Image;
 import java.awt.image.BufferedImage;
 import java.util.List;
 import java.util.logging.Logger;
@@ -39,7 +38,6 @@ import net.sf.freecol.client.FreeColClient;
 import net.sf.freecol.client.control.ConnectController;
 import net.sf.freecol.client.control.InGameController;
 import net.sf.freecol.client.gui.GUI;
-import net.sf.freecol.client.gui.ImageLibrary;
 import net.sf.freecol.client.gui.dialog.*;
 import net.sf.freecol.common.i18n.Messages;
 import net.sf.freecol.common.io.FreeColXMLReader;
@@ -394,6 +392,15 @@ public abstract class FreeColAction extends AbstractAction
     @Override
     public void setValue(FreeColAction value) {
         logger.warning("Unsupported method FreeColAction.setValue.");
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String getEnabledBy() {
+        /* FreeColAction cannot be enabled/disabled by other options. */
+        return null;
     }
 
 

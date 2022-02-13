@@ -42,6 +42,7 @@ import net.sf.freecol.client.control.FreeColClientHolder;
 import net.sf.freecol.client.control.MapTransform;
 import net.sf.freecol.client.gui.dialog.FreeColDialog;
 import net.sf.freecol.client.gui.dialog.Parameters;
+import net.sf.freecol.client.gui.mapviewer.MapViewerRepaintManager;
 import net.sf.freecol.client.gui.panel.FreeColPanel;
 import net.sf.freecol.client.gui.panel.report.LabourData.UnitData;
 import net.sf.freecol.common.FreeColException;
@@ -117,9 +118,8 @@ public class GUI extends FreeColClientHolder {
      * Create the GUI.
      *
      * @param freeColClient The {@code FreeColClient} for the game.
-     * @param scaleFactor The scale factor for the GUI.
      */
-    public GUI(FreeColClient freeColClient, float scaleFactor) {
+    public GUI(FreeColClient freeColClient) {
         super(freeColClient);
     }
 
@@ -1093,7 +1093,7 @@ public class GUI extends FreeColClientHolder {
      * @param fontName An optional font name to be used.
      * @exception FreeColException if the LAF is incompatible with the GUI.
      */
-    public void installLookAndFeel(String fontName, float scale) throws FreeColException {}
+    public void installLookAndFeel(String fontName) throws FreeColException {}
 
     /**
      * Quit the GUI.  All that is required is to exit the full screen.
@@ -1706,14 +1706,27 @@ public class GUI extends FreeColClientHolder {
 
     /**
      * Refresh the whole GUI.
-     *
-     * Used by: CanvasMapEditorMouseListener,
-     *   DebugUtils.addUnitToTil,changeOwnership,resetMoves,buildDebugMenu}
-     *   Display{Borders,Grid,TileTest}Action, {NewEmptyMap,ScaleMap}Action
-     *   DebugMenu, MapEditorController, TilePopup
-     *   InGameController.removeHandler
+     * 
+     * This is done by invalidating any cached rendering and then repainting the
+     * entire screen. Please use only when the entire map should be fully updated.
+     * 
+     * Please use {@link MapViewerRepaintManager#markAsDirty(Tile)}
+     * and {@link #repaint()} instead, if only parts of the map need to be updated.
      */
     public void refresh() {}
+    
+    /**
+     * Repaints the entire screen, but uses image caches to avoid unnecessary
+     * painting of the map.
+     * 
+     * Please use {@link MapViewerRepaintManager#markAsDirty(Tile)} in order to
+     * invalidate the caches for a given tile.
+     * 
+     * @see #refresh()
+     */
+    public void repaint() {}
+    
+    public void refreshTile(Tile tile) {}
 
     /**
      * Refresh the players table in the StartGamePanel.
@@ -1836,6 +1849,11 @@ public class GUI extends FreeColClientHolder {
      */
     public void showClientOptionsDialog() {}
 
+    /**
+     * Refreshes the GUI with settings from the client options.
+     */
+    public void refreshGuiUsingClientOptions() {}
+    
     /**
      * Show the colony panel
      *

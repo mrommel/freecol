@@ -231,6 +231,7 @@ public final class Canvas extends JDesktopPane {
         
         updateSize();
         revalidate();
+        repaint();
         
         /*
          * TODO: Stop using hardcoded 125ms for animation. Instead, we should
@@ -256,6 +257,8 @@ public final class Canvas extends JDesktopPane {
             if (add) {
                 addMapControls();
             }
+            revalidate();
+            repaint();
         }
     }
 
@@ -1049,6 +1052,7 @@ public final class Canvas extends JDesktopPane {
         repaint();
         addAsFrame(panel, false, popupPosition, resizable);
         panel.requestFocus();
+        freeColClient.getActionManager().update();
         return panel;
     }
 
@@ -1323,6 +1327,7 @@ public final class Canvas extends JDesktopPane {
      */
     public FreeColPanel showMainPanel() {
         closeMenus();
+        closeMainPanel();
         this.parentFrame.removeMenuBar();
         this.mainPanel = new MainPanel(this.freeColClient);
         addCentered(this.mainPanel, JLayeredPane.DEFAULT_LAYER);

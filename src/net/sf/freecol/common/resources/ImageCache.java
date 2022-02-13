@@ -21,10 +21,11 @@ package net.sf.freecol.common.resources;
 
 import java.awt.Dimension;
 import java.awt.image.BufferedImage;
-
 import java.util.HashMap;
-import java.util.logging.Logger;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import net.sf.freecol.FreeCol;
 
@@ -36,10 +37,16 @@ public class ImageCache {
 
     private static final Logger logger = Logger.getLogger(ImageCache.class.getName());
 
+    private static final boolean DEBUG_PRINT_CACHE_SIZES_TO_STDOUT = false;
+    
     public static final String REPLACEMENT_IMAGE = "image.miscicon.delete";
 
     /** A cache of scaled (and possibly greyed) images. */
     private final Map<Long, BufferedImage> cache;
+    private final Map<Long, BufferedImage> lowPriorityCache;
+    
+    private long cacheSize = 0;
+    private long lowPriorityCacheSize = 0;
 
 
     /**
@@ -47,6 +54,7 @@ public class ImageCache {
      */
     public ImageCache() {
         this.cache = new HashMap<>();
+        this.lowPriorityCache = new HashMap<>();
     }
 
 
@@ -109,29 +117,82 @@ public class ImageCache {
      * where to maintain the image cache.
      *
      * @param ir The {@code ImageResource} to load from.
-     * @param key The name of the resource to return.
      * @param size The size of the requested image.
      *     Rescaling will be performed if necessary.
      * @param grayscale If true return a grayscale image.
      * @return The image identified by {@code resource}.
      */
     public BufferedImage getCachedImage(final ImageResource ir,
-                                         final String key,
                                          final Dimension size,
                                          final boolean grayscale,
                                          final int variation) {
 
-        // TODO: add logging but probably in a branch for now
-        // until we understand the performance issue better
-        final long hashKey = imageHash(key, size, grayscale, variation);
-        final BufferedImage cached = this.cache.get(hashKey);
-        if (cached != null) return cached;
+        final long cacheKey = imageHash(ir.getPrimaryKey(), size, grayscale, variation);
+        final BufferedImage cached = searchCaches(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
 
         BufferedImage image = ir.getImage(variation, size, grayscale);
-        if (image != null) this.cache.put(hashKey, image);
+        placeImageInCache(cacheKey, image);
         return image;
     }
+    
+    public BufferedImage getCachedImageOrGenerate(final String key,
+            final Dimension size,
+            final boolean grayscale,
+            final int variation,
+            Callable<BufferedImage> imageCreator) {
+        
+        final long cacheKey = imageHash(key, size, grayscale, variation);
+        final BufferedImage cached = searchCaches(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        
+        try {
+            final BufferedImage image = imageCreator.call();
+            placeImageInLowPriorityCache(cacheKey, image);
+            return image;
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "Exception while producing image", e);
+            return null;
+        }
+    }
+    
+    private BufferedImage searchCaches(long cacheKey) {
+        BufferedImage image = this.cache.get(cacheKey);
+        if (image != null) {
+            return image;
+        }
+        image = this.lowPriorityCache.get(cacheKey);
+        if (image != null) {
+            return image;
+        }
+        return null;
+    }
+    
+    private void placeImageInCache(long hashKey, BufferedImage image) {
+        if (image != null) {
+            this.cache.put(hashKey, image);
+            cacheSize += image.getWidth() * image.getHeight() * 4;
+            debugPrintCacheSizes();
+        }
+    }
+    
+    private void placeImageInLowPriorityCache(long hashKey, BufferedImage image) {
+        if (image != null) {
+            this.lowPriorityCache.put(hashKey, image);
+            lowPriorityCacheSize += image.getWidth() * image.getHeight() * 4;
+            debugPrintCacheSizes();
+        }
+    }
 
+    private void debugPrintCacheSizes() {
+        if (DEBUG_PRINT_CACHE_SIZES_TO_STDOUT) {
+            System.out.format("Cache: %4sMB   Low priority cache: %4sMB\n", Math.round(cacheSize / (1024 * 1024)), Math.round(lowPriorityCacheSize / (1024 * 1024)));
+        }
+    }
 
     // Public interface
 
@@ -153,7 +214,7 @@ public class ImageCache {
 
         Dimension d = new Dimension(Math.round(image.getWidth() * scale),
                                     Math.round(image.getHeight() * scale));
-        return getCachedImage(ir, key, d, grayscale, 0);
+        return getCachedImage(ir, d, grayscale, 0);
     }
 
     /**
@@ -193,7 +254,7 @@ public class ImageCache {
                                        final boolean grayscale,
                                        final int seed) {
         final ImageResource ir = getImageResource(key);
-        return getCachedImage(ir, key, size, grayscale, ir.getVariationNumberForSeed(seed));
+        return getCachedImage(ir, size, grayscale, ir.getVariationNumberForSeed(seed));
     }
 
     /**
@@ -201,5 +262,13 @@ public class ImageCache {
      */
     public void clear() {
         this.cache.clear();
+        this.cacheSize = 0;
+        
+        clearLowPriorityCache();
+    }
+    
+    public void clearLowPriorityCache() {
+        this.lowPriorityCache.clear();
+        this.lowPriorityCacheSize = 0;
     }
 }

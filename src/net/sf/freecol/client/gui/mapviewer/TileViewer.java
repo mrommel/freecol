@@ -28,10 +28,10 @@ import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.awt.image.RescaleOp;
-import java.util.HashMap;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 import net.sf.freecol.client.ClientOptions;
 import net.sf.freecol.client.FreeColClient;
@@ -56,7 +56,6 @@ import net.sf.freecol.common.model.TileImprovementStyle;
 import net.sf.freecol.common.model.TileItem;
 import net.sf.freecol.common.model.TileType;
 import net.sf.freecol.common.model.Unit;
-import net.sf.freecol.common.util.ImageUtils;
 
 
 /**
@@ -104,12 +103,7 @@ public final class TileViewer extends FreeColClientHolder {
     /** Fonts for the colony population chip. */
     private Font emphFont, normFont;
 
-    /**
-     * Caches transitions (image with applied alpha) since applying the alpha-channel
-     * is oddly slow on some system.
-     */
-    private static final Map<String, BufferedImage> transitionCache = new HashMap<>();
-    
+
     /**
      * The constructor to use.
      *
@@ -140,9 +134,6 @@ public final class TileViewer extends FreeColClientHolder {
         this.tinyFont = this.lib.getScaledFont("normal-plain-tiny", null);
         this.emphFont = this.lib.getScaledFont("simple-bold+italic-smaller", null);
         this.normFont = this.lib.getScaledFont("simple-bold-tiny", null);
-        
-        // Not necessary, but saves memory:
-        transitionCache.clear();
     }
         
     /**
@@ -168,7 +159,8 @@ public final class TileViewer extends FreeColClientHolder {
                                                 BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2d = image.createGraphics();
         g2d.translate(0, compoundHeight - this.tileHeight);
-        displayTileWithBeach(g2d, tile, false);
+        displayAnimatedBaseTiles(g2d, tile, false);
+        displayTileWithBeach(g2d, tile);
         displayTileItems(g2d, tile, null, overlayImage);
         g2d.dispose();
         return image;
@@ -317,7 +309,8 @@ public final class TileViewer extends FreeColClientHolder {
      */
     private void displayTile(Graphics2D g2d, Tile tile, Player player,
                              BufferedImage overlayImage) {
-        displayTileWithBeach(g2d, tile, false);
+        displayAnimatedBaseTiles(g2d, tile, false);
+        displayTileWithBeach(g2d, tile);
         if (!tile.isExplored()) return;
         drawBaseTileTransitions(g2d, tile);
         
@@ -372,18 +365,37 @@ public final class TileViewer extends FreeColClientHolder {
      *
      * @param g2d The {@code Graphics2D} object on which to draw the tile.
      * @param tile The {@code Tile} to draw if it is ocean.
+     * @param freezeAnimation The animation is paused if set to {@code true}. 
      */
-    public void displayAnimatedBaseTiles(Graphics2D g2d, Tile tile) {
+    public void displayAnimatedBaseTiles(Graphics2D g2d, Tile tile, boolean freezeAnimation) {
         final TileType tileType = tile.getType();
         if (tileType != null && tileType.isWater()) { // TODO: And animation enabled
             /* 
              * TODO: Add a single shared clock for MapViewer and TileViewer.
              *       For now, just support water with 125ms frames.
              */
-            final long ticks = System.currentTimeMillis() / 125;
-            
-            g2d.drawImage(this.lib.getAnimatedScaledTerrainImage(tileType, ticks), 0, 0, null);
+            final long ticks;
+            if (freezeAnimation) {
+                ticks = 0;
+            } else {
+                ticks = System.currentTimeMillis() / 125;
+            }
+
+            final List<Direction> directionsWithLand = allDirectionsWithLand(tile);
+            if (directionsWithLand.isEmpty()) {
+                g2d.drawImage(this.lib.getAnimatedScaledTerrainImage(tileType, ticks), 0, 0, null);
+            } else {
+                g2d.drawImage(this.lib.getAnimatedScaledWaterAndBeachTerrainImage(tileType, directionsWithLand, ticks), 0, 0, null);
+            }
         }
+    }
+
+    private List<Direction> allDirectionsWithLand(Tile tile) {
+        final List<Direction> directionsWithLand = Arrays.asList(Direction.values()).stream().filter(d -> {
+            final Tile neighbour = tile.getNeighbourOrNull(d);
+            return neighbour != null && neighbour.isLand();
+        }).collect(Collectors.toList());
+        return directionsWithLand;
     }
     
     /**
@@ -393,18 +405,23 @@ public final class TileViewer extends FreeColClientHolder {
      * @param g2d The {@code Graphics2D} object on which to draw the tile.
      * @param tile The {@code Tile} to draw.
      */
-    public void displayTileWithBeach(Graphics2D g2d, Tile tile, boolean useAnimation) {
+    public void displayTileWithBeach(Graphics2D g2d, Tile tile) {
         final TileType tileType = tile.getType();
         final int x = tile.getX();
         final int y = tile.getY();
 
-        final boolean outForBaseTileAnimation = useAnimation && (tileType != null) && tileType.isWater();
+        final boolean outForBaseTileAnimation = (tileType != null) && tileType.isWater();
         if (!outForBaseTileAnimation) {
             // ATTENTION: we assume that all base tiles have the same size
             g2d.drawImage(this.lib.getScaledTerrainImage(tileType, x, y), 0, 0, null);
         }
 
         if (!tile.isExplored()) return;
+        
+        /* 
+         * This is the old beach style. We might want to keep this as an option for
+         * systems with low memory.
+         *
         if (!tile.isLand() && tile.getStyle() > 0) {
             int edgeStyle = tile.getStyle() >> 4;
             if (edgeStyle > 0) {
@@ -417,6 +434,7 @@ public final class TileViewer extends FreeColClientHolder {
                               0, 0, null);
             }
         }
+        */
     }
     
     void drawBaseTileTransitions(Graphics2D g2d, Tile tile) {
@@ -441,45 +459,10 @@ public final class TileViewer extends FreeColClientHolder {
     }
     
     private void drawBaseTileTransitionAtDirection(Graphics2D g2d, Tile tile, Direction direction) {
-        final Tile borderingTile = tile.getNeighbourOrNull(direction);
-        
-        if (borderingTile == null
-                || !borderingTile.isExplored()
-                || !tile.isExplored()
-                || tile.getType() == borderingTile.getType()) {
-            // No transition needed in these cases.
-            return;
+        final BufferedImage transitionImage = this.lib.getBaseTileTransitionImage(tile, direction);
+        if (transitionImage != null) {
+            g2d.drawImage(transitionImage, 0, 0, null);
         }
-        
-        if (tile.getType().isWater()
-                && borderingTile.getType().isWater()) {
-            /*
-             * Lake, great river, high seas and ocean have the same graphics and
-             * should not have a transition.
-             * 
-             * TODO: Use the same ImageResource and check that instead.
-             */
-            return;
-        }
-
-        final String hash = tile.getType().getId() + "," + borderingTile.getType().getId() + "," + direction.getKey() + "," + ((int) (lib.getScaleFactor() * 1000));
-        final BufferedImage cachedTransitionImage = transitionCache.get(hash);
-        if (cachedTransitionImage != null) {
-            g2d.drawImage(cachedTransitionImage, 0, 0, null);
-            return;
-        }
-        
-        final boolean notABeachTransition = borderingTile.isLand() || !borderingTile.isLand() && !tile.isLand();
-        final BufferedImage terrainImage;
-        if (notABeachTransition) {
-            terrainImage = this.lib.getScaledTerrainImage(borderingTile.getType(), 0, 0); // Using 0,0 to get the same variation every time.
-        } else {
-            terrainImage = this.lib.getBeachCenterImage();
-        }
-        
-        final BufferedImage transitionImage = ImageUtils.imageWithAlphaFromMask(terrainImage, this.lib.getTerrainMask(direction));
-        transitionCache.put(hash, transitionImage);
-        g2d.drawImage(transitionImage, 0, 0, null);
     }
     
     private void drawRiverMouth(Graphics2D g2d, Tile tile) {
@@ -637,7 +620,7 @@ public final class TileViewer extends FreeColClientHolder {
             float xOffset = this.lib.scaleInt(STATE_OFFSET_X);
             float yOffset = this.lib.scaleInt(STATE_OFFSET_Y);
             final int colonyLabels = getClientOptions()
-                .getInteger(ClientOptions.COLONY_LABELS);
+                .getInteger(ClientOptions.DISPLAY_COLONY_LABELS);
             if (colonyLabels != ClientOptions.COLONY_LABELS_MODERN) {
                 // Draw the settlement chip
                 chip = this.lib.getIndianSettlementChip(g2d, is);

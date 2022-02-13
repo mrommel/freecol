@@ -24,7 +24,6 @@ import javax.xml.stream.XMLStreamException;
 import net.sf.freecol.common.io.FreeColXMLReader;
 import net.sf.freecol.common.metaserver.ServerInfo;
 import net.sf.freecol.common.model.Game;
-import net.sf.freecol.common.networking.Connection;
 
 
 /**
@@ -32,7 +31,7 @@ import net.sf.freecol.common.networking.Connection;
  */
 public class RemoveServerMessage extends ServerInfoMessage {
 
-    public static final String TAG = "remove";
+    public static final String TAG = "removeServer";
 
 
     /**

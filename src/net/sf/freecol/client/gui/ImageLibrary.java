@@ -37,12 +37,14 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 
+import net.sf.freecol.client.gui.images.BeachTileAnimationImageCreator;
 import net.sf.freecol.common.io.sza.SimpleZippedAnimation;
 import net.sf.freecol.common.model.Ability;
 import net.sf.freecol.common.model.BuildableType;
@@ -74,6 +76,7 @@ import net.sf.freecol.common.resources.ImageResource;
 import net.sf.freecol.common.resources.ResourceManager;
 import net.sf.freecol.common.resources.StringResource;
 import net.sf.freecol.common.resources.Video;
+import net.sf.freecol.common.util.ImageUtils;
 
 
 /**
@@ -965,11 +968,71 @@ public final class ImageLibrary {
         return this.imageCache.getSizedImage(key, this.tileSize, false, variationSeedUsing(x, y));
     }
     
-    public BufferedImage getBeachCenterImage() {
+    private ImageResource getBeachCenterImageResource() {
         final String key = "image.tile.model.tile.beach";
-        return this.imageCache.getSizedImage(key, this.tileSize, false);
+        return ImageCache.getImageResource(key);
     }
+    
+    /**
+     * Returns a transparent image for making a transition between
+     * the given tiles.
+     *  
+     * @param tile The tile that should get a transition.
+     * @param direction The direction to get the bordering tile from..
+     * @return The image, or {@code null} if there is no transition that
+     *      should be drawn.
+     */
+    public BufferedImage getBaseTileTransitionImage(Tile tile, Direction direction) {
+        final Tile borderingTile = tile.getNeighbourOrNull(direction);
+        
+        if (borderingTile == null
+                || !borderingTile.isExplored()
+                || !tile.isExplored()
+                || tile.getType() == borderingTile.getType()) {
+            // No transition needed in these cases.
+            return null;
+        }
+        
+        final ImageResource terrainImageResource;
+        final boolean notABeachTransition = borderingTile.isLand() || !borderingTile.isLand() && !tile.isLand();
+        if (notABeachTransition) {
+            terrainImageResource = ImageCache.getImageResource(getTerrainImageKey(borderingTile.getType()));
+        } else {
+            terrainImageResource = getBeachCenterImageResource();
+        }
+        
+        if (terrainImageResource == null) {
+            return null;
+        }
+        
+        final ImageResource tileImageResource = ImageCache.getImageResource(getTerrainImageKey(tile.getType()));
+        if (tileImageResource == null
+                || terrainImageResource.getPrimaryKey().equals(tileImageResource.getPrimaryKey())) {
+            /*
+             * No reason to make transitions between tiles with the same graphics.
+             */
+            return null;
+        }
+        
 
+        final String transitionKey = terrainImageResource.getPrimaryKey() + "$gen"; 
+        
+        /*
+         * Using direction.ordinal() as the cached variation in order to get different
+         * image cache hash values.
+         */
+        final BufferedImage transitionImage = imageCache.getCachedImageOrGenerate(transitionKey, tileSize, false, direction.ordinal(), () -> {
+            /*
+             * Uses variation 0 to get the same variation every time as this reduces the amount
+             * of memory used.
+             */
+            final BufferedImage terrainImage = imageCache.getCachedImage(terrainImageResource, tileSize, false, 0);
+            return ImageUtils.imageWithAlphaFromMask(terrainImage, getTerrainMask(direction));
+        });
+
+        return transitionImage;
+    }
+    
     /**
      * Returns the border terrain-image for the given type.
      *
@@ -1312,7 +1375,8 @@ public final class ImageLibrary {
     }
     
     public BufferedImage getTerrainMask(Direction direction) {
-        return this.imageCache.getSizedImage("image.mask." + direction.toString().toLowerCase(), this.tileSize, false);
+        final String key = (direction != null) ? "image.mask." + direction.toString().toLowerCase() : "image.mask";
+        return this.imageCache.getSizedImage(key, this.tileSize, false);
     }
     
     public BufferedImage getTerrainImage(TileType type, int x, int y,
@@ -1331,10 +1395,70 @@ public final class ImageLibrary {
         }
         
         return imageCache.getCachedImage(imageResource,
-                getTerrainImageKey(type),
                 this.tileSize,
                 false,
                 imageResource.getVariationNumberForTick(ticks));
+    }
+    
+    /**
+     * Gets the combined animated image for ocean and beach.
+     * 
+     * @param type The tile type.
+     * @param directionsWithLand All directions where there are neighbouring land tiles. 
+     * @param ticks The number of ticks to get the correct animation frame.
+     * @return A cached, genereated image.
+     */
+    public BufferedImage getAnimatedScaledWaterAndBeachTerrainImage(TileType type, List<Direction> directionsWithLand, long ticks) {
+        final ImageResource beachCenterImageResource = getBeachCenterImageResource();
+        if (beachCenterImageResource == null) {
+            return null;
+        }
+        
+        final String beachVariationKey = determineDirectionCombinationKey(directionsWithLand);
+        
+        final ImageResource oceanImageResource = ImageCache.getImageResource(getTerrainImageKey(type));
+        final int oceanVariationNumber = oceanImageResource.getVariationNumberForTick(ticks);
+        
+        final String generatedKey = oceanImageResource.getPrimaryKey() + ".beach." + beachVariationKey + "$gen";
+        final BufferedImage result = imageCache.getCachedImageOrGenerate(generatedKey, tileSize, false, oceanVariationNumber, () -> {
+            final BufferedImage oceanImage = getAnimatedScaledTerrainImage(type, ticks);
+            final String oceanMaskKey = "image.mask.beach." + beachVariationKey;
+            final BufferedImage maskImage = this.imageCache.getSizedImage(oceanMaskKey, this.tileSize, false);
+            return BeachTileAnimationImageCreator.generateImage(beachCenterImageResource.getImage(tileSize, false), oceanImage, oceanVariationNumber, maskImage, getTerrainMask(null));
+        });
+        
+        return result;
+    }
+
+    /**
+     * Returns a string representing the {@code directions} given.
+     * @param directions The directions that should be included
+     * @return The directions in lowercase, ordered alphabetically and
+     *      combined with "_". Corners that are a part of a longSide is
+     *      not included in the returned {@code String}.
+     */
+    private String determineDirectionCombinationKey(List<Direction> directions) {
+        final Optional<String> neighboursPre = directions.stream()
+                .filter(d -> Direction.longSides.contains(d))
+                .map(d -> d.toString().toLowerCase())
+                .sorted()
+                .reduce((a, b) -> a + "_" + b);
+        
+        /*
+         * We need to remove some of the combinations where the corners are
+         * included in the edges. This is done in order to reduce the number
+         * of possible images -- although it would look nicer to have special
+         * graphics for these cases as well.
+         */
+        final String beachVariationKey = directions.stream()
+                .filter(d -> Direction.longSides.contains(d)
+                        || neighboursPre.isEmpty()
+                        || !neighboursPre.get().contains(d.toString().toLowerCase()))
+                .map(d -> d.toString().toLowerCase())
+                .sorted()
+                .reduce((a, b) -> a + "_" + b).get();
+        
+        return beachVariationKey;
     }
 
 

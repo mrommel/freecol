@@ -37,11 +37,14 @@ import java.awt.event.ActionListener;
 import java.awt.image.BufferedImage;
 import java.beans.PropertyChangeEvent;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Predicate;
 import java.util.logging.Level;
+import java.util.stream.Collectors;
 
 import javax.swing.ImageIcon;
 import javax.swing.JLabel;
@@ -181,15 +184,16 @@ public class SwingGUI extends GUI {
      * Create the GUI.
      *
      * @param freeColClient The {@code FreeColClient} for the game.
-     * @param scaleFactor The scale factor for the GUI.
      */
-    public SwingGUI(FreeColClient freeColClient, float scaleFactor) {
-        super(freeColClient, scaleFactor);
+    public SwingGUI(FreeColClient freeColClient) {
+        super(freeColClient);
 
         this.graphicsDevice = Utils.getGoodGraphicsDevice();
         if (this.graphicsDevice == null) {
             FreeCol.fatal(logger, "Could not find a GraphicsDevice!");
         }
+        
+        final float scaleFactor = determineScaleFactorUsingClientOptions(Utils.determineDpi(graphicsDevice));
         this.imageCache = new ImageCache();
         this.scaledImageLibrary = new ImageLibrary(scaleFactor, this.imageCache);
         this.fixedImageLibrary = new ImageLibrary(scaleFactor, this.imageCache);
@@ -200,6 +204,7 @@ public class SwingGUI extends GUI {
         this.canvas = null;
         this.widgets = null;
         this.dragPoint = null;
+        
         logger.info("GUI constructed using scale factor " + scaleFactor);
     }
 
@@ -211,60 +216,28 @@ public class SwingGUI extends GUI {
      *
      * @param a The {@code Animation} to perform.
      */
-    private void animate(Animation a) {
-        // Insist that tiles are visible (assume changeFocus centers
-        // sufficiently well that if one is good the rest will be)
+    private void animate(Animation a, JLabel unitLabel) {
         final List<Tile> tiles = a.getTiles();
-        for (Tile t : tiles) {
-            if (!this.mapViewer.getMapViewerBounds().onScreen(t)) {
-                this.mapViewer.changeFocus(t);
-                break;
-            }
-        }
-        // Always completely update the screen before starting the animation
-        // as focus may have changed either here or in animations()
-        paintImmediately();
-
         // Calculate the union of the bounds for all the tiles in the
         // animation, this is the area that will need to be repainted
         // as the animation progresses 
         Rectangle bounds = null;
         for (Tile t : tiles) {
-            Rectangle r = this.mapViewer.calculateTileBounds(t);
+            Rectangle r = this.mapViewer.getMapViewerBounds().calculateDrawnTileBounds(t);
             bounds = (bounds == null) ? r : bounds.union(r);
         }
-        // Get the unit label, add to canvas if not already there, and
-        // update the animation with the locations for the label for each
-        // of the animation's tiles
-        final Unit unit = a.getUnit();
-        boolean newLabel = !this.mapViewer.getMapViewerState().getUnitAnimator().isOutForAnimation(unit);
-        JLabel unitLabel = this.mapViewer.getMapViewerState().getUnitAnimator().enterUnitOutForAnimation(unit);
-        List<Point> points = transform(tiles, alwaysTrue(),
-            (t) -> this.mapViewer.getMapViewerState().getUnitAnimator().getAnimationPosition(unitLabel, t));
-        a.setPoints(points);
-        unitLabel.setLocation(points.get(0)); // set location before adding
-        if (newLabel) this.canvas.animationLabel(unitLabel, true);
-            
+
         // Define a callback to wrap Canvas.paintImmediately(Rectangle)
         final Canvas can = this.canvas;
         final Rectangle aBounds = bounds;
         final Animations.Procedure painter = new Animations.Procedure() {
                 public void execute() {
-                    mapViewer.getMapViewerRepaintManager().markAsDirty(aBounds);
                     can.paintImmediately(aBounds);
                 }
             };
 
-        try { // Delegate to the animation
-            a.executeWithLabel(unitLabel, painter);
-            
-        } finally { // Make sure we release the label again
-            this.mapViewer.getMapViewerState().getUnitAnimator().releaseUnitOutForAnimation(unit);
-            
-            if (!this.mapViewer.getMapViewerState().getUnitAnimator().isOutForAnimation(unit)) {
-                this.canvas.animationLabel(unitLabel, false);
-            }
-        }
+        // Delegate to the animation
+        a.executeWithLabel(unitLabel, painter);
     }
     
     /**
@@ -282,12 +255,85 @@ public class SwingGUI extends GUI {
             .getBoolean(ClientOptions.ALWAYS_CENTER);
         Tile first = animations.get(0).getTiles().get(0);
         if (center && first != getFocus()) {
-            this.mapViewer.changeFocus(first);
+            this.mapViewer.getMapViewerBounds().setFocus(first);
         }
 
         invokeNowOrWait(() -> {
-                for (Animation a : animations) animate(a);
-            });
+            /*
+             * We might have switched active unit. In that case, we have to refocus
+             * after the animation has completed.
+             */
+            final Tile originalFocus = mapViewer.getMapViewerBounds().getFocus();
+            final List<Tile> allTiles = animations
+                    .stream()
+                    .map(a -> a.getTiles())
+                    .flatMap(Collection::stream)
+                    .collect(Collectors.toList());
+            
+            // Insist that tiles are visible (assume changeFocus centers
+            // sufficiently well that if one is good the rest will be)
+            for (Tile t : allTiles) {
+                if (!this.mapViewer.getMapViewerBounds().onScreen(t)) {
+                    this.mapViewer.getMapViewerBounds().setFocus(t);
+                    break;
+                }
+            }
+            
+            final List<JLabel> animatedUnitLabels = new ArrayList<>();
+            try {
+                animatedUnitLabels.addAll(prepareUnitLabelsForAnimation(animations));
+
+                // Always completely update the screen before starting the animation
+                // as focus may have changed
+                this.mapViewer.getMapViewerRepaintManager().markAsDirty();
+                paintImmediately();
+                                
+                for (int i=0; i<animations.size(); i++) {
+                    animate(animations.get(i), animatedUnitLabels.get(i));
+                }
+            } finally {
+                if (originalFocus != null && mapViewer.getMapViewerBounds().setFocus(originalFocus)) {
+                    repaint();
+                }
+                for (int i=0; i<animations.size(); i++) {
+                    final Unit unit = animations.get(i).getUnit();
+                    final JLabel unitLabel = animatedUnitLabels.get(i);
+                    releaseUnitOutForAnimation(unit, unitLabel);
+                }
+            }
+        });
+    }
+
+
+    private void releaseUnitOutForAnimation(final Unit unit, final JLabel unitLabel) {
+        this.mapViewer.getMapViewerState().getUnitAnimator().releaseUnitOutForAnimation(unit);
+        if (!this.mapViewer.getMapViewerState().getUnitAnimator().isOutForAnimation(unit)) {
+            this.canvas.animationLabel(unitLabel, false);
+            mapViewer.getMapViewerRepaintManager().markAsDirty();
+            repaint();
+        }
+    }
+
+    private List<JLabel> prepareUnitLabelsForAnimation(final List<Animation> animations) {
+        final List<JLabel> animatedUnitLabels = new ArrayList<>();
+        for (Animation a : animations) {
+            // Get the unit label, add to canvas if not already there, and
+            // update the animation with the locations for the label for each
+            // of the animation's tiles
+            
+            final Unit unit = a.getUnit();
+            boolean newLabel = !this.mapViewer.getMapViewerState().getUnitAnimator().isOutForAnimation(unit);
+            JLabel unitLabel = this.mapViewer.getMapViewerState().getUnitAnimator().enterUnitOutForAnimation(unit);
+            animatedUnitLabels.add(unitLabel);
+            List<Point> points = transform(a.getTiles(), alwaysTrue(),
+                    (t) -> this.mapViewer.getMapViewerState().getUnitAnimator().getAnimationPosition(unitLabel, t));
+            a.setPoints(points);
+            unitLabel.setLocation(points.get(0)); // set location before adding
+            if (newLabel) {
+                this.canvas.animationLabel(unitLabel, true);
+            }
+        }
+        return animatedUnitLabels;
     }
     
     /**
@@ -351,6 +397,15 @@ public class SwingGUI extends GUI {
      */
     private boolean changeActiveUnit(Unit newUnit) {
         final Unit oldUnit = getActiveUnit();
+        
+        if (newUnit != null
+        		&& newUnit.hasTile()
+        		&& !mapViewer.getMapViewerBounds().onScreen(newUnit.getTile())) {
+        	this.mapViewer.getMapViewerBounds().setFocus(newUnit.getTile());
+        	mapViewer.getMapViewerRepaintManager().markAsDirty(newUnit.getTile());
+        	repaint();
+        }
+        
         if (newUnit == oldUnit) return false;
         
         this.mapViewer.getMapViewerState().setActiveUnit(newUnit);
@@ -423,6 +478,7 @@ public class SwingGUI extends GUI {
     private PopupPosition getPopupPosition(Tile tile) {
         if (tile == null) return PopupPosition.CENTERED;
         int where = this.mapViewer.getMapViewerBounds().setOffsetFocus(tile);
+        repaint();
         return (where > 0) ? PopupPosition.CENTERED_LEFT
             : (where < 0) ? PopupPosition.CENTERED_RIGHT
             : PopupPosition.CENTERED;
@@ -456,7 +512,9 @@ public class SwingGUI extends GUI {
     private void startGoto() {
         this.gotoStarted = true;
         this.canvas.setCursor(Canvas.GO_CURSOR);
-        this.mapViewer.changeGotoPath(null);
+        if (this.mapViewer.getMapViewerState().changeGotoPath(null)) {
+            repaint();
+        }
     }
 
     /**
@@ -468,7 +526,9 @@ public class SwingGUI extends GUI {
         PathNode ret = (this.gotoStarted) ? this.mapViewer.getMapViewerState().getGotoPath() : null;
         this.gotoStarted = false;
         this.canvas.setCursor(null);
-        this.mapViewer.changeGotoPath(null);
+        if (this.mapViewer.getMapViewerState().changeGotoPath(null)) {
+            repaint();
+        }
         return ret;
     }
 
@@ -494,8 +554,8 @@ public class SwingGUI extends GUI {
                 || !tile.isExplored()
                 || !unit.getSimpleMoveType(tile).isLegal()) ? null
                 : unit.findPath(tile);
-            if (this.mapViewer.changeGotoPath(newPath)) {
-                refresh();
+            if (this.mapViewer.getMapViewerState().changeGotoPath(newPath)) {
+                repaint();
             }
         }
     }
@@ -512,11 +572,11 @@ public class SwingGUI extends GUI {
      *
      * @param tile The {@code tile} to paint.
      */
-    private void refreshTile(Tile tile) {
+    @Override
+    public void refreshTile(Tile tile) {
         if (tile != null) {
-            final Rectangle tileBounds = this.mapViewer.calculateTileBounds(tile);
-            mapViewer.getMapViewerRepaintManager().markAsDirty(tileBounds);
-            this.canvas.repaint(tileBounds);
+            mapViewer.getMapViewerRepaintManager().markAsDirty(tile);
+            this.canvas.repaint();
         }
     }
 
@@ -525,8 +585,7 @@ public class SwingGUI extends GUI {
      */
     private void resetMapZoom() {
         if (this.scaledImageLibrary.getScaleFactor() != fixedImageLibrary.getScaleFactor()) {
-            this.mapViewer.changeScale(fixedImageLibrary.getScaleFactor());
-            refresh();
+            changeMapScale(fixedImageLibrary.getScaleFactor());
         }
     }
    
@@ -605,25 +664,10 @@ public class SwingGUI extends GUI {
      * {@inheritDoc}
      */
     @Override
-    public void installLookAndFeel(String fontName, float scale) throws FreeColException {
-        /*
-         * Quick (and dirty) fix for font scaling until this can be adjusted in-game.
-         * 
-         * The scale factor should default to a value based on the DPI of the screen,
-         * but an even better approach would be determining it using the font size.
-         * 
-         * We should have the option of specifying the font size in the client
-         * options dialog.
-         */
-        if (scale >= 1.999) {
-            FontLibrary.DEFAULT_FONT_SIZE = 18F;
-        } else if  (scale >= 1.749) {
-            FontLibrary.DEFAULT_FONT_SIZE = 16F;
-        } else if (scale >= 1.499) {
-            FontLibrary.DEFAULT_FONT_SIZE = 14F;
-        } else if (scale >= 1.499) {
-            FontLibrary.DEFAULT_FONT_SIZE = 14F;
-        }
+    public void installLookAndFeel(String fontName) throws FreeColException {
+        final int dpi = Utils.determineDpi(graphicsDevice);
+        final int fontSize = determineMainFontSizeUsingClientOptions(dpi);
+        FontLibrary.setMainFontSize(fontSize);
         
         FreeColLookAndFeel fclaf = new FreeColLookAndFeel();
         FreeColLookAndFeel.install(fclaf);
@@ -663,18 +707,19 @@ public class SwingGUI extends GUI {
         // to focus on
         if (active != null) {
             changeView(active, false);
-            if (tile == null) {
+            if (active.hasTile()) {
                 tile = active.getTile();
-                if (tile == null) {
-                    tile = active.getOwner().getFallbackTile();
-                }
+            } else if (active.getOwner().getFallbackTile() != null) {
+                tile = active.getOwner().getFallbackTile();
+                changeView(tile);
             }
         } else if (tile != null) {
             changeView(tile);
         } else {
             changeView((Unit)null, false);
         }
-        this.mapViewer.changeFocus(tile);
+        this.mapViewer.getMapViewerBounds().setFocus(tile);
+        refresh();
     }
         
     /**
@@ -705,8 +750,15 @@ public class SwingGUI extends GUI {
         final FreeColClient fcc = getFreeColClient();
         final ClientOptions opts = getClientOptions();
         this.mapControls = MapControls.newInstance(fcc);
-        final ActionListener al = (ActionEvent ae) ->
-            this.refreshTile(this.mapViewer.getCursorTile());
+        final ActionListener al = (ActionEvent ae) -> {
+            final Tile tile = mapViewer.getMapViewerState().getCursorTile();
+            if (tile != null) {
+                mapViewer.getMapViewerRepaintManager().markAsDirty(tile);
+                // Repaint as part of normal animation.
+                //this.canvas.repaint();
+            }
+        };
+        
         this.mapViewer = new MapViewer(fcc, this.scaledImageLibrary, al);
         this.canvas = new Canvas(getFreeColClient(), this.graphicsDevice,
                                  desiredWindowSize, this.mapViewer,
@@ -765,15 +817,37 @@ public class SwingGUI extends GUI {
                                          attacker, defender,
                                          attackerTile, defenderTile,
                                          success, getMapScale()));
+        refreshTilesForUnit(attacker, attackerTile, defenderTile);
     }
-
+    
     /**
      * {@inheritDoc}
      */
     @Override
     public void animateUnitMove(Unit unit, Tile srcTile, Tile dstTile) {
         animations(Animations.unitMove(getFreeColClient(),
-                                       unit, srcTile, dstTile, getMapScale()));
+                unit, srcTile, dstTile, getMapScale()));
+        refreshTilesForUnit(unit, srcTile, dstTile);
+    }
+    
+    /**
+     * Refreshes and repaints the unit and tiles.
+     * 
+     * @param unit The {@code Unit} that may have moved, and which we should
+     *      use the line-of-sight for invalidating tiles.
+     * @param srcTile The source for the unit.
+     * @param dstTile The destination tile for the unit.
+     */
+    private void refreshTilesForUnit(Unit unit, Tile srcTile, Tile dstTile) {
+        if (unit != null && srcTile != null) {
+            final List<Tile> possibleDirtyTiles = srcTile.getSurroundingTiles(0, unit.getLineOfSight());
+            mapViewer.getMapViewerRepaintManager().markAsDirty(possibleDirtyTiles);
+        }
+        if (unit != null && dstTile != null) {
+            final List<Tile> possibleDirtyTiles = dstTile.getSurroundingTiles(0, unit.getLineOfSight());
+            mapViewer.getMapViewerRepaintManager().markAsDirty(possibleDirtyTiles);
+        }
+        repaint();
     }
 
 
@@ -817,7 +891,7 @@ public class SwingGUI extends GUI {
      */
     @Override
     public Tile getFocus() {
-        return this.mapViewer.getFocus();
+        return this.mapViewer.getMapViewerBounds().getFocus();
     }
 
     /**
@@ -825,8 +899,8 @@ public class SwingGUI extends GUI {
      */
     @Override
     public void setFocus(Tile tileToFocus) {
-        this.mapViewer.changeFocus(tileToFocus);
-        refresh();
+        this.mapViewer.getMapViewerBounds().setFocus(tileToFocus);
+        repaint();
     }
 
 
@@ -980,7 +1054,7 @@ public class SwingGUI extends GUI {
     public void clearGotoPath() {
         stopGoto();
         updateUnitPath();
-        refresh();
+        repaint();
     }
 
     /**
@@ -1007,7 +1081,7 @@ public class SwingGUI extends GUI {
             }
             updateUnitPath();
         }
-        refresh();
+        repaint();
     }
 
     /**
@@ -1031,10 +1105,11 @@ public class SwingGUI extends GUI {
             igc().clearGotoOrders(unit);
         } else {
             igc().goToTile(unit, path);
+            refresh();
         }
         // Only update the path if the unit is still active
         if (unit == getActiveUnit()) updateUnitPath();
-        refresh();
+        repaint();
     }
 
     /**
@@ -1057,7 +1132,7 @@ public class SwingGUI extends GUI {
     public void prepareDrag(int x, int y) {
         if (isGotoStarted()) {
             stopGoto();
-            refresh();
+            repaint();
         }
         setDragPoint(x, y);
         this.canvas.requestFocus();
@@ -1105,7 +1180,7 @@ public class SwingGUI extends GUI {
     @Override
     public boolean scrollMap(Direction direction) {
         boolean ret = this.mapViewer.getMapViewerBounds().scrollMap(direction);
-        refresh();
+        paintImmediately();
         return ret;
     }
 
@@ -1191,7 +1266,7 @@ public class SwingGUI extends GUI {
     public void changeView(Unit unit, boolean force) {
         boolean change = changeViewMode(ViewMode.MOVE_UNITS);
         change |= changeActiveUnit(unit);
-        if (unit != null && unit.hasTile()) {
+        if (unit != null && unit.hasTile() && !force) {
             // Bring the selected tile along with the unit.
             change |= changeSelectedTile(unit.getTile(), true);
         }
@@ -1247,8 +1322,7 @@ public class SwingGUI extends GUI {
         float scale = this.scaledImageLibrary.getScaleFactor();
         float newScale = scale + ImageLibrary.SCALE_STEP;
         if (scale < newScale && newScale <= ImageLibrary.MAX_SCALE) {
-            this.mapViewer.changeScale(newScale);
-            refresh();
+            changeMapScale(newScale);
         }
     }
 
@@ -1260,7 +1334,16 @@ public class SwingGUI extends GUI {
         float scale = this.scaledImageLibrary.getScaleFactor();
         float newScale = scale - ImageLibrary.SCALE_STEP;
         if (ImageLibrary.MIN_SCALE <= newScale && newScale < scale) {
+            changeMapScale(newScale);
+        }
+    }
+
+    private void changeMapScale(float newScale) {
+        imageCache.clear();
+        if (this.mapViewer != null) {
             this.mapViewer.changeScale(newScale);
+        }
+        if (this.canvas != null) {
             refresh();
         }
     }
@@ -1362,7 +1445,7 @@ public class SwingGUI extends GUI {
     public void displayChat(String sender, String message, Color color,
                             boolean privateChat) {
         this.mapViewer.getMapViewerState().displayChat(new GUIMessage(sender + ": " + message, color));
-        refresh();
+        repaint();
     }
 
     /**
@@ -1425,9 +1508,20 @@ public class SwingGUI extends GUI {
      */
     @Override
     public void refresh() {
-        this.mapViewer.forceReposition();
-        this.mapViewer.getMapViewerRepaintManager().markAsDirty();
-        this.canvas.repaint(0, 0, this.canvas.getWidth(), this.canvas.getHeight());
+        if (this.mapViewer != null) {
+            this.mapViewer.getMapViewerRepaintManager().markAsDirty();
+        }
+        if (this.canvas != null) {
+            this.canvas.repaint(0, 0, this.canvas.getWidth(), this.canvas.getHeight());
+        }
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void repaint() {
+    	this.canvas.repaint(0, 0, this.canvas.getWidth(), this.canvas.getHeight());
     }
 
     /**
@@ -1576,11 +1670,7 @@ public class SwingGUI extends GUI {
                 = new ClientOptionsDialog(fcc, this.canvas.getParentFrame());
             group = this.canvas.showFreeColDialog(dialog, null);
         } finally {
-            this.canvas.resetMenuBar();
-            if (group != null) {
-                // Immediately redraw the minimap if that was updated.
-                updateMapControls();
-            }
+            refreshGuiUsingClientOptions();
         }
         if (fcc.isMapEditor()) {
             startMapEditorGUI();
@@ -1589,6 +1679,81 @@ public class SwingGUI extends GUI {
         } else {
             showMainPanel(null); // back to the main panel
         }
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void refreshGuiUsingClientOptions() {
+        final int dpi = Utils.determineDpi(graphicsDevice);
+        final float scaleFactor = determineScaleFactorUsingClientOptions(dpi);
+        
+        this.fixedImageLibrary.changeScaleFactor(scaleFactor);
+        resetMapZoom();
+        if (this.tileViewer != null) {
+            this.tileViewer.updateScaledVariables();
+        }
+        
+        final int fontSize = determineMainFontSizeUsingClientOptions(dpi);
+        FontLibrary.setMainFontSize(fontSize);
+        
+        final Font font = FontLibrary.getMainFont();
+        FreeColLookAndFeel.installFont(font);
+        Utility.initStyleContext(font);
+        
+        if (this.mapControls != null) {
+            this.mapControls.updateLayoutIfNeeded();
+        }
+        if (this.canvas != null) { 
+            this.canvas.resetMenuBar();
+            if (this.canvas.removeMapControls()) {
+                this.canvas.addMapControls();
+            }
+        }
+        
+        updateMapControls();
+        refresh();
+    }
+
+    private int determineMainFontSizeUsingClientOptions(final int dpi) {
+        final int DEFAULT_DPI = 96;
+        final float DEFAULT_MAIN_FONT_SIZE = 12f;
+        
+        final int fontSize;
+        if (getClientOptions().getBoolean(ClientOptions.MANUAL_MAIN_FONT_SIZE)) {
+            fontSize = getClientOptions().getInteger(ClientOptions.MAIN_FONT_SIZE);
+            logger.info("Manual font size: " + fontSize + " (reported DPI: " + dpi + ")");
+        } else {
+            fontSize = (int) ((DEFAULT_MAIN_FONT_SIZE * dpi) / DEFAULT_DPI);
+            logger.info("Automatic font size: " + fontSize + " (reported DPI: " + dpi + ")");
+        }
+        
+        return fontSize;
+    }
+
+    private float determineScaleFactorUsingClientOptions(final int dpi) {
+        final int DEFAULT_DPI = 96;
+        final int displayScaling = getClientOptions().getInteger(ClientOptions.DISPLAY_SCALING);
+        float scaleFactor;
+        if (displayScaling == 0) {
+            /* 
+             * Multiplication and division by 4 gives a rounded number
+             * to the closest 25.
+             */
+            scaleFactor = Math.round((dpi * 4f) / DEFAULT_DPI) / 4f;
+            if (scaleFactor < 1) {
+                scaleFactor = 1;
+            }
+            if (scaleFactor > 2) {
+                scaleFactor = 2;
+            }
+            logger.info("Automatic scale factor: " + scaleFactor + " (reported DPI: " + dpi + ")");
+        } else {
+            scaleFactor = displayScaling / 100f;
+            logger.info("Manual scale factor: " + scaleFactor + " (reported DPI: " + dpi + ")");
+        }
+        return scaleFactor;
     }
 
     /**

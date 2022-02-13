@@ -32,12 +32,8 @@ import javax.swing.JComponent;
 
 import net.sf.freecol.client.FreeColClient;
 import net.sf.freecol.client.control.MapEditorController;
-import net.sf.freecol.client.gui.GUI.ViewMode;
 import net.sf.freecol.client.gui.panel.MapEditorTransformPanel.TileTypeTransform;
-import net.sf.freecol.client.gui.dialog.RiverStyleDialog;
-import net.sf.freecol.common.model.Map;
 import net.sf.freecol.common.model.Tile;
-import net.sf.freecol.common.model.TileImprovement;
 import net.sf.freecol.server.generator.TerrainGenerator;
 
 
@@ -201,7 +197,7 @@ public final class CanvasMapEditorMouseListener extends AbstractCanvasListener
                 }
             }
         }
-        getGUI().refresh();
+        getGUI().repaint();
         // Disabled: Is this needed? canvas.requestFocus();
     }
 
@@ -234,7 +230,7 @@ public final class CanvasMapEditorMouseListener extends AbstractCanvasListener
 
         performDragScrollIfActive(e);
 
-        getGUI().refresh();
+        getGUI().repaint();
     }
 
     /**
