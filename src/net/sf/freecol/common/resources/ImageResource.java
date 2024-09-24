@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -43,12 +43,14 @@ import java.util.logging.Logger;
 
 import javax.imageio.ImageIO;
 
+import net.sf.freecol.common.resources.Resource.Cleanable;
+
 
 /**
  * A {@code Resource} wrapping an {@code Image}.
  * @see Resource
  */
-public class ImageResource extends Resource {
+public class ImageResource extends Resource implements Cleanable {
 
     private static final Logger logger = Logger.getLogger(ImageResource.class.getName());
 
@@ -57,6 +59,15 @@ public class ImageResource extends Resource {
         = Comparator.<BufferedImage>comparingInt(bi ->
             bi.getWidth() * bi.getHeight());
 
+    /**
+     * Experimental flag for forcing lowest quality (for now using bitmask instead of
+     * full transparency ... later perhaps also fewer colors.
+     * 
+     * We should make a separate class for image configurations if we keep this
+     * longterm.
+     */
+    private static boolean forceLowestQuality = false;
+    
     private volatile BufferedImage image = null;
     private List<URI> alternativeLocators = null;
     private List<BufferedImage> loadedImages = null;
@@ -66,10 +77,11 @@ public class ImageResource extends Resource {
     /**
      * Do not use directly.
      *
+     * @param cachingKey The caching key.
      * @param resourceLocator The {@code URI} used when loading this resource.
      */
-    public ImageResource(String primaryKey, URI resourceLocator) {
-        super(primaryKey, resourceLocator);
+    public ImageResource(String cachingKey, URI resourceLocator) {
+        super(cachingKey, resourceLocator);
     }
 
 
@@ -122,6 +134,10 @@ public class ImageResource extends Resource {
         return (int) (ticks % (variations.size() + 1));
     }
     
+    public int getNumberOfVariations() {
+        return variations.size() + 1;
+    }
+    
     public ImageResource getVariation(int variationNumber) {
         if (variations.isEmpty()) {
             return this;
@@ -137,6 +153,7 @@ public class ImageResource extends Resource {
     /**
      * Gets the image using the specified dimension and choice of grayscale.
      * 
+     * @param variation The image variation.
      * @param d The {@code Dimension} of the requested image.
      * @param grayscale If true return a grayscale image.
      * @return The scaled {@code BufferedImage}.
@@ -171,6 +188,40 @@ public class ImageResource extends Resource {
 
     private synchronized boolean haveAlternatives() {
         return this.loadedImages != null;
+    }
+    
+    /**
+     * Returns an image that has been forcefully scaled to the given size.
+     * 
+     * @param size The {@code Dimension} of the requested image.
+     * @return The {@code BufferedImage} with the exact dimension. When there
+     *      are alternative sizes, the image with the closest aspect ratio is
+     *      chosen to get the least amount distortion possible. 
+     */
+    public BufferedImage getSizedImageIgnoringProportions(Dimension size) {
+        BufferedImage img = getImage();
+        if (img == null) {
+            return null;
+        }
+        if (size.width == img.getWidth() && size.height == img.getHeight()) {
+            return img;
+        }
+        if (loadedImages == null || loadedImages.isEmpty()) {
+            return createResizedImage(img, size.width, size.height, true);
+        }
+        
+        final double targetAspectRatio = ((double) size.width) / size.height;
+        final BufferedImage img2 = loadedImages.stream().min((a, b) -> {
+            final double aspectDiffA = targetAspectRatio - ((double) a.getWidth()) / a.getHeight();
+            final double aspectDiffB = targetAspectRatio - ((double) b.getWidth()) / b.getHeight();
+            if (Math.abs(aspectDiffA) > Math.abs(aspectDiffB)) {
+                return 1;
+            } else {
+                return -1;
+            }
+        }).orElseThrow();
+        
+        return createResizedImage(img2, size.width, size.height, true);
     }
 
     /**
@@ -277,6 +328,7 @@ public class ImageResource extends Resource {
                 return null;
             }
 
+            
             if (canUseBitmask(uri)) {
                 final BufferedImage compatibleImage = GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice().getDefaultConfiguration()
                         .createCompatibleImage(image.getWidth(), image.getHeight(), Transparency.BITMASK);
@@ -295,9 +347,28 @@ public class ImageResource extends Resource {
         return null;
     }
 
+    @Override
+    public void clean() {
+        image = null;
+        if (loadedImages != null) {
+            loadedImages.clear();
+        }
+        if (variations != null) {
+            variations.stream().forEach(v -> v.clean());
+        }
+    }
 
     private static boolean canUseBitmask(URI uri) {
         /* TODO: Better method for determining images that can use a bitmask. */
-        return uri.toString().contains("center") && !uri.toString().contains("mask");
+        return forceLowestQuality || uri.toString().contains("center") && !uri.toString().contains("mask");
+    }
+    
+    public static final void forceLowestQuality(boolean forceLowestQuality) {
+        // Deactive for testing:
+        //ImageResource.forceLowestQuality = forceLowestQuality;
+    }
+    
+    public static final boolean isForceLowestQuality() {
+        return forceLowestQuality;
     }
 }

@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -23,6 +23,7 @@ import java.awt.Component;
 import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.GridLayout;
+import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseListener;
@@ -30,6 +31,7 @@ import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javax.swing.AbstractAction;
 import javax.swing.ComponentInputMap;
 import javax.swing.InputMap;
 import javax.swing.JButton;
@@ -45,13 +47,15 @@ import javax.swing.text.StyleConstants;
 import javax.swing.text.StyledDocument;
 
 import net.miginfocom.swing.MigLayout;
-
 import net.sf.freecol.client.ClientOptions;
 import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.FontLibrary;
 import net.sf.freecol.client.gui.label.GoodsLabel;
 import net.sf.freecol.client.gui.label.MarketLabel;
 import net.sf.freecol.client.gui.label.UnitLabel;
+import net.sf.freecol.client.gui.panel.FreeColButton.ButtonStyle;
 import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.Constants.BoycottAction;
 import net.sf.freecol.common.model.Europe;
 import net.sf.freecol.common.model.Goods;
 import net.sf.freecol.common.model.GoodsType;
@@ -64,7 +68,6 @@ import net.sf.freecol.common.model.Player;
 import net.sf.freecol.common.model.StringTemplate;
 import net.sf.freecol.common.model.TransactionListener;
 import net.sf.freecol.common.model.Unit;
-import static net.sf.freecol.common.model.Constants.*;
 
 
 /**
@@ -164,7 +167,7 @@ public final class EuropePanel extends PortPanel {
          */
         @Override
         public boolean accepts(Unit unit) {
-            return unit.isNaval() && !unit.isDamaged();
+            return unit.isNaval() && !unit.isDamagedAndUnderForcedRepair();
         }
 
         /**
@@ -198,10 +201,10 @@ public final class EuropePanel extends PortPanel {
                     && unit.hasSpaceLeft()) {
                     StringTemplate locName = destination
                         .getLocationLabelFor(unit.getOwner());
-                    if (!getGUI().confirm(null, StringTemplate
+                    if (!getGUI().modalConfirmDialog(null, StringTemplate
                             .template("europePanel.leaveColonists")
                             .addStringTemplate("%newWorld%", locName),
-                            unit, "ok", "cancel")) return null;
+                            unit, "ok", "cancel", true)) return null;
                 }
 
                 igc().moveTo(unit, dest);
@@ -322,7 +325,7 @@ public final class EuropePanel extends PortPanel {
         }
     }
 
-    private static final class EuropeButton extends JButton {
+    private static final class EuropeButton extends FreeColButton {
 
         public EuropeButton(String text, int keyEvent, String command,
                             ActionListener listener) {
@@ -378,8 +381,9 @@ public final class EuropePanel extends PortPanel {
             case ACTIVE: case FORTIFIED: case FORTIFYING:
             case SENTRY: case SKIPPED:
                 return true;
+            default:
+                return false;
             }
-            return false;
         }
     }
 
@@ -505,7 +509,7 @@ public final class EuropePanel extends PortPanel {
      */
     private final class TransactionLog extends JTextPane
         implements TransactionListener {
-
+        
         /**
          * Creates a transaction log.
          */
@@ -538,6 +542,7 @@ public final class EuropePanel extends PortPanel {
             StyledDocument doc = getStyledDocument();
             try {
                 if (doc.getLength() > 0) text = "\n\n" + text;
+                
                 doc.insertString(doc.getLength(), text, null);
             } catch (Exception e) {
                 logger.log(Level.WARNING, "Transaction log update failure", e);
@@ -625,7 +630,7 @@ public final class EuropePanel extends PortPanel {
 
         exitButton = new EuropeButton(Messages.message("close"),
             KeyEvent.VK_ESCAPE, EuropeAction.EXIT.toString(),
-            ae -> exitAction());
+            ae -> exitAction()).withButtonStyle(ButtonStyle.IMPORTANT);
         trainButton = new EuropeButton(Messages.message("train"),
             KeyEvent.VK_T, EuropeAction.TRAIN.toString(),
             ae -> getGUI().showTrainPanel());
@@ -645,7 +650,7 @@ public final class EuropePanel extends PortPanel {
         toAmericaPanel = new DestinationPanel();
         toEuropePanel = new DestinationPanel();
         inPortPanel = new EuropeInPortPanel();
-        cargoPanel = new CargoPanel(freeColClient, true);
+        cargoPanel = new CargoPanel(freeColClient, true, false);
         europeanDocksPanel = new EuropeanDocksPanel();
         marketPanel = new MarketPanel(this);
         log = new TransactionLog();
@@ -655,6 +660,7 @@ public final class EuropePanel extends PortPanel {
         StyleConstants.setAlignment(attributes, StyleConstants.ALIGN_RIGHT);
         //StyleConstants.setForeground(attributes, Color.WHITE);
         StyleConstants.setBold(attributes, true);
+        StyleConstants.setFontSize(attributes, (int) FontLibrary.getMainFontSize());
         log.setParagraphAttributes(attributes, true);
 
         defaultTransferHandler
@@ -684,30 +690,24 @@ public final class EuropePanel extends PortPanel {
         JScrollPane toAmericaScroll = new JScrollPane(toAmericaPanel,
             ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER,
             ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        toAmericaScroll.getVerticalScrollBar().setUnitIncrement(16);
         JScrollPane toEuropeScroll = new JScrollPane(toEuropePanel,
             ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER,
             ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        toEuropeScroll.getVerticalScrollBar().setUnitIncrement(16);
         JScrollPane inPortScroll = new JScrollPane(inPortPanel,
             ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER,
             ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        inPortScroll.getVerticalScrollBar().setUnitIncrement(16);
         JScrollPane cargoScroll = new JScrollPane(cargoPanel,
             ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER,
             ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        cargoScroll.getVerticalScrollBar().setUnitIncrement(16);
         JScrollPane docksScroll = new JScrollPane(europeanDocksPanel,
             ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
             ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        docksScroll.getVerticalScrollBar().setUnitIncrement(16);
         JScrollPane marketScroll = new JScrollPane(marketPanel,
             ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER,
             ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
         JScrollPane logScroll = new JScrollPane(log,
             ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
             ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        logScroll.getVerticalScrollBar().setUnitIncrement(16);
 
         toAmericaPanel.setBorder(Utility.localizedBorder("sailingToAmerica"));
         toEuropePanel.setBorder(Utility.localizedBorder("sailingToEurope"));
@@ -757,7 +757,17 @@ public final class EuropePanel extends PortPanel {
         Unit u = europe.getLastUnit();
         if (u == null) setSelectedUnitLabel(null); else setSelectedUnit(u);
 
-        getGUI().restoreSavedSize(this, new Dimension(1050, 725));
+        final int width = getImageLibrary().scaleInt(1050);
+        final int height = getImageLibrary().scaleInt(725);
+        
+        getGUI().restoreSavedSize(this, new Dimension(width, height));
+        
+        setEscapeAction(new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent ae) {
+                exitButton.doClick();
+            }
+        });
     }
 
     /**
@@ -814,15 +824,11 @@ public final class EuropePanel extends PortPanel {
     @Override
     public void setSelectedUnitLabel(UnitLabel unitLabel) {
         if (selectedUnitLabel != unitLabel) {
-            if (selectedUnitLabel != null) {
-                selectedUnitLabel.setSelected(false);
-            }
             selectedUnitLabel = unitLabel;
             if (unitLabel == null) {
                 cargoPanel.setCarrier(null);
             } else {
                 cargoPanel.setCarrier(unitLabel.getUnit());
-                unitLabel.setSelected(true);
             }
         }
         inPortPanel.revalidate();

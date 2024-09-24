@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -54,9 +54,11 @@ import net.sf.freecol.common.model.Location;
 import net.sf.freecol.common.model.ModelMessage;
 import net.sf.freecol.common.model.Specification;
 import net.sf.freecol.common.option.BooleanOption;
+import net.sf.freecol.common.option.FullscreenDisplayModeOption;
 import net.sf.freecol.common.option.IntegerOption;
 import net.sf.freecol.common.option.Option;
 import net.sf.freecol.common.option.OptionGroup;
+import net.sf.freecol.common.option.PercentageOption;
 import net.sf.freecol.common.option.RangeOption;
 import net.sf.freecol.common.option.TextOption;
 import net.sf.freecol.common.util.LogBuilder;
@@ -121,6 +123,12 @@ public class ClientOptions extends OptionGroup {
 
     private static final String DISPLAY_GROUP
         = "clientOptions.display";
+    
+    /**
+     * Option to control the display mode in fullscreen
+     */
+    public static final String DISPLAY_MODE_FULLSCREEN
+        = "model.option.fullscreenDisplayMode";
 
     /**
      * Option to control the display scale factor.
@@ -151,7 +159,20 @@ public class ClientOptions extends OptionGroup {
     /** Enable use of XRender pipeline (unix specific). */
     public static final String USE_XRENDER
         = "model.option.useXRender";
+    
+    public static final String USE_TERRAIN_ANIMATIONS
+        = "model.option.useTerrainAnimations";
 
+    /** Allows the user to determine the tradeoff between quality and rendering speed. */
+    public static final String GRAPHICS_QUALITY
+        = "model.option.graphicsQuality";
+    
+    public static final int GRAPHICS_QUALITY_LOWEST = 0;
+    public static final int GRAPHICS_QUALITY_LOW = 10;
+    public static final int GRAPHICS_QUALITY_NORMAL = 20;
+    public static final int GRAPHICS_QUALITY_HIGH = 30;
+    public static final int GRAPHICS_QUALITY_HIGHEST = 40;
+    
     /** Animation speed for our units. */
     public static final String MOVE_ANIMATION_SPEED
         = "model.option.moveAnimationSpeed";
@@ -208,6 +229,10 @@ public class ClientOptions extends OptionGroup {
     /** Whether to display borders by default or not. */
     public static final String DISPLAY_BORDERS
         = "model.option.displayBorders";
+    
+    /** Whether to draw the fog of war on the actual map or not. */
+    public static final String DISPLAY_FOG_OF_WAR
+        = "model.option.displayFogOfWar";
 
     /** Whether to delay on a unit's last move or not. */
     public static final String UNIT_LAST_MOVE_DELAY
@@ -491,6 +516,14 @@ public class ClientOptions extends OptionGroup {
     /** The volume level to set. */
     public static final String AUDIO_VOLUME
         = "model.option.audioVolume";
+    
+    /** The volume level to set for the music. */
+    public static final String MUSIC_VOLUME
+        = "model.option.musicVolume";
+    
+    /** The volume level to set. */
+    public static final String SOUND_EFFECTS_VOLUME
+        = "model.option.soundEffectsVolume";
 
     /** Play an alert sound on message arrival. */
     public static final String AUDIO_ALERTS
@@ -527,12 +560,12 @@ public class ClientOptions extends OptionGroup {
     /** Compare by descending size then liberty. */
     private static final Comparator<Colony> colonySizeComparator
         = Comparator.comparingInt(Colony::getUnitCount)
-            .thenComparingInt(Colony::getSoL)
+            .thenComparingInt(Colony::getSonsOfLiberty)
             .reversed();
 
     /** Compare by descending liberty then size. */
     private static final Comparator<Colony> colonySoLComparator
-        = Comparator.comparingInt(Colony::getSoL)
+        = Comparator.comparingInt(Colony::getSonsOfLiberty)
             .thenComparingInt(Colony::getUnitCount)
             .reversed();
 
@@ -548,6 +581,22 @@ public class ClientOptions extends OptionGroup {
                 "clientOptions.gui.friendlyMoveAnimationSpeed.slow",
                 "clientOptions.gui.friendlyMoveAnimationSpeed.normal",
                 "clientOptions.gui.friendlyMoveAnimationSpeed.fast"
+            });
+    
+    private static final Map<Integer, String> graphicsQualityChoices
+        = makeUnmodifiableMap(new Integer[] {
+                GRAPHICS_QUALITY_LOWEST,
+                GRAPHICS_QUALITY_LOW,
+                GRAPHICS_QUALITY_NORMAL,
+                GRAPHICS_QUALITY_HIGH,
+                GRAPHICS_QUALITY_HIGHEST
+            },
+            new String[] {
+                "clientOptions.gui.graphicsQuality.lowest",
+                "clientOptions.gui.graphicsQuality.low",
+                "clientOptions.gui.graphicsQuality.normal",
+                "clientOptions.gui.graphicsQuality.high",
+                "clientOptions.gui.graphicsQuality.highest"
             });
         
     
@@ -610,7 +659,10 @@ public class ClientOptions extends OptionGroup {
         ClientOptions clop = new ClientOptions();
         if (!clop.load(save)) return false;
         LogBuilder lb = new LogBuilder(64);
-        boolean ret = this.merge(clop, lb);
+        
+        /** Only the mods should be loaded from the savegame: */
+        boolean ret = this.merge(clop.getOption(USER_MODS), lb);
+        
         lb.shrink("\n"); lb.log(logger, Level.FINEST);
         return ret;
     }
@@ -696,6 +748,14 @@ public class ClientOptions extends OptionGroup {
             return null;
         }
     }
+    
+    public boolean isRiverAnimationEnabled() {
+        return isTerrainAnimationsEnabled() && getRange(ClientOptions.GRAPHICS_QUALITY) >= ClientOptions.GRAPHICS_QUALITY_NORMAL;
+    }
+    
+    public boolean isTerrainAnimationsEnabled() {
+        return getBoolean(ClientOptions.USE_TERRAIN_ANIMATIONS) && getRange(ClientOptions.GRAPHICS_QUALITY) >= ClientOptions.GRAPHICS_QUALITY_LOW;
+    }
 
     /**
      * Perform backward compatibility fixups on new client options as
@@ -703,7 +763,7 @@ public class ClientOptions extends OptionGroup {
      * can clean these up as they become standard.
      */
     public void fixClientOptions() {
-        // @compact 0.11.0
+        // @compat 0.11.0
         addBooleanOption(MINIMAP_TOGGLE_BORDERS,
                          GUI_GROUP, true);
         addBooleanOption(MINIMAP_TOGGLE_FOG_OF_WAR,
@@ -714,7 +774,7 @@ public class ClientOptions extends OptionGroup {
                       SAVEGAMES_GROUP, "last-turn");
         addTextOption(BEFORE_LAST_TURN_NAME,
                       SAVEGAMES_GROUP, "before-last-turn");
-        // end @compact 0.11.0
+        // end @compat 0.11.0
 
         // @compat 0.11.1
         addBooleanOption(STOCK_ACCOUNTS_FOR_PRODUCTION,
@@ -807,7 +867,44 @@ public class ClientOptions extends OptionGroup {
         regroup(MESSAGES_GROUP, INTERFACE_GROUP);
         regroup(WAREHOUSE_GROUP, INTERFACE_GROUP);
         regroup(OTHER_GROUP, INTERFACE_GROUP);
+        addBooleanOption(DISPLAY_FOG_OF_WAR, MAPCONTROLS_GROUP, false);
         // end @compat 0.11.6
+        // @compat 0.12.0
+        /* Gone after 0.13.0:
+        final PercentageOption volumeOption = getOption(AUDIO_VOLUME, PercentageOption.class);
+        volumeOption.setPreviewEnabled(true);
+        */
+        addRangeOption(GRAPHICS_QUALITY, DISPLAY_GROUP, 20, graphicsQualityChoices);
+        addBooleanOption(USE_TERRAIN_ANIMATIONS, DISPLAY_GROUP, true);
+        // end @compat 0.12.0
+        // @compat 0.13.0
+        addPercentageOption(MUSIC_VOLUME, AUDIO_GROUP, 100);
+        addPercentageOption(SOUND_EFFECTS_VOLUME, AUDIO_GROUP, 100);
+        // end @compat 0.13.0
+        // @compat 1.1.0
+        remove("model.option.mapControls");
+        final RangeOption op = getOption(DISPLAY_SCALING, RangeOption.class);
+        if (!op.getItemValues().containsKey(75)) {
+            op.setItemValueAtIndex(1, 75, "model.option.displayScaling.75");
+        }
+        // end @compat 1.1.0
+        // @compat 1.1.0
+        if (!hasOption(DISPLAY_MODE_FULLSCREEN, FullscreenDisplayModeOption.class)) {
+            final FullscreenDisplayModeOption dmf = new FullscreenDisplayModeOption(null);
+            dmf.setGroup(DISPLAY_GROUP);
+            dmf.setValue(null);
+            add(op);
+        }
+        // end @compat 1.1.0
+    }
+    
+    private void addPercentageOption(String id, String gr, int val) {
+        if (!hasOption(id, PercentageOption.class)) {
+            PercentageOption op = new PercentageOption(id, null);
+            op.setGroup(gr);
+            op.setValue(val);
+            add(op);
+        }
     }
 
     private void addBooleanOption(String id, String gr, boolean val) {
@@ -881,8 +978,10 @@ public class ClientOptions extends OptionGroup {
      * @param gr The identifier for the option group to move to.
      */
     private void regroup(String id, String gr) {
-        Option op = getOption(id);
-        if (op != null) op.setGroup(gr);
+        final Option<?> op = getOption(id);
+        if (op != null) {
+            op.setGroup(gr);
+        }
     }
 
     /**

@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -196,7 +196,8 @@ public class ServerEurope extends Europe implements TurnTaker {
         final Player owner = getOwner();
         return transform(getSpecification().getUnitTypeList(),
                          ut -> ut.isRecruitable()
-                             && owner.hasAbility(Ability.CAN_RECRUIT_UNIT, ut),
+                             && owner.hasAbility(Ability.CAN_RECRUIT_UNIT, ut)
+                             && ut.isAvailableTo(owner),
                          ut -> new RandomChoice<>(ut, ut.getRecruitProbability()));
     }
 

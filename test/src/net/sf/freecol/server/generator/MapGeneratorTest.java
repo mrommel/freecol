@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2021  The FreeCol Team
+ *  Copyright (C) 2002-2024  The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -68,7 +68,7 @@ public class MapGeneratorTest extends FreeColTestCase {
             }
         }
 
-        gen.generateMap(g, null, new LogBuilder(-1));
+        gen.generateMap(g, null, true, new LogBuilder(-1));
         assertNotNull("New map", g.getMap());
     }
 
@@ -86,7 +86,7 @@ public class MapGeneratorTest extends FreeColTestCase {
 
         g.addPlayer(new ServerPlayer(g, false, nation));
 
-        gen.generateMap(g, null, new LogBuilder(-1));
+        gen.generateMap(g, null, true, new LogBuilder(-1));
         assertNotNull("New map", g.getMap());
 
         // Check that the map is created at all
@@ -112,7 +112,7 @@ public class MapGeneratorTest extends FreeColTestCase {
         //spec().applyDifficultyLevel("model.difficulty.medium");
 
         MapGenerator gen = new SimpleMapGenerator(new Random(1));
-        gen.generateMap(g, null, new LogBuilder(-1));
+        gen.generateMap(g, null, true, new LogBuilder(-1));
         assertNotNull("New map", g.getMap());
 
         // Map of correct size?
@@ -156,7 +156,7 @@ public class MapGeneratorTest extends FreeColTestCase {
             players.add(p);
         }
 
-        gen.generateMap(g, null, new LogBuilder(-1));
+        gen.generateMap(g, null, true, new LogBuilder(-1));
 
         // Check that the map is created at all
         assertNotNull(g.getMap());
@@ -183,18 +183,7 @@ public class MapGeneratorTest extends FreeColTestCase {
     public void testImportMap() {
         MapGenerator gen = new SimpleMapGenerator(new Random(1));
         Map importMap = null;
-        List<File> mapFiles = new ArrayList<>();
-        if (true) {
-            // We now have too many maps to test comprehensively, so
-            // we will just test the standard (old) maps for now
-            for (String name : FreeColTestCase.STANDARD_MAPS) {
-                mapFiles.add(new File(name));
-            }
-        } else {
-            // This test all the maps
-            mapFiles.addAll(FreeColDirectories.getMapFileList());
-        }
-        for (File importFile : mapFiles) {
+        for (File importFile : FreeColDirectories.getMapFileList()) {
             Game game = getStandardGame();
             Specification spec = game.getSpecification();
             spec.setFile(MapGeneratorOptions.IMPORT_FILE, importFile);
@@ -206,7 +195,7 @@ public class MapGeneratorTest extends FreeColTestCase {
                     + ex.toString());
             }
             try {
-                assertNotNull(gen.generateMap(game, importMap,
+                assertNotNull(gen.generateMap(game, importMap, true,
                                               new LogBuilder(-1)));
             } catch (Exception ex) {
                 fail("Map generate of " + importFile.getName() + " failed: "
@@ -221,7 +210,7 @@ public class MapGeneratorTest extends FreeColTestCase {
         spec().setFile(MapGeneratorOptions.IMPORT_FILE, null);
         Game game = getStandardGame();
         MapGenerator gen = new SimpleMapGenerator(new Random(1));
-        gen.generateMap(game, null, new LogBuilder(-1));
+        gen.generateMap(game, null, true, new LogBuilder(-1));
         
         Map map = game.getMap();
         Region pacific = map.getRegionByKey("model.region.pacific");

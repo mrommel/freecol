@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -21,6 +21,8 @@ package net.sf.freecol.common.resources;
 
 import java.awt.Dimension;
 import java.awt.image.BufferedImage;
+import java.lang.ref.ReferenceQueue;
+import java.lang.ref.SoftReference;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -43,7 +45,9 @@ public class ImageCache {
 
     /** A cache of scaled (and possibly greyed) images. */
     private final Map<Long, BufferedImage> cache;
-    private final Map<Long, BufferedImage> lowPriorityCache;
+    private final Map<Long, CacheSoftReference<Long, BufferedImage>> lowPriorityCache;
+    private final ReferenceQueue<BufferedImage> lowPriorityCacheReferenceQueue = new ReferenceQueue<>();
+    private final CacheCleanupThread cleanupThread = new CacheCleanupThread();
     
     private long cacheSize = 0;
     private long lowPriorityCacheSize = 0;
@@ -55,6 +59,8 @@ public class ImageCache {
     public ImageCache() {
         this.cache = new HashMap<>();
         this.lowPriorityCache = new HashMap<>();
+        
+        cleanupThread.start();
     }
 
 
@@ -89,6 +95,7 @@ public class ImageCache {
      * @param key The image key.
      * @param size The size of the image.
      * @param grayscale True if grayscale.
+     * @param variation The image variation.
      * @return A unique hash of these parameters.
      */
     public static long imageHash(final String key, final Dimension size,
@@ -120,6 +127,7 @@ public class ImageCache {
      * @param size The size of the requested image.
      *     Rescaling will be performed if necessary.
      * @param grayscale If true return a grayscale image.
+     * @param variation The image variation.
      * @return The image identified by {@code resource}.
      */
     public BufferedImage getCachedImage(final ImageResource ir,
@@ -127,7 +135,7 @@ public class ImageCache {
                                          final boolean grayscale,
                                          final int variation) {
 
-        final long cacheKey = imageHash(ir.getPrimaryKey(), size, grayscale, variation);
+        final long cacheKey = imageHash(ir.getCachingKey(), size, grayscale, variation);
         final BufferedImage cached = searchCaches(cacheKey);
         if (cached != null) {
             return cached;
@@ -165,11 +173,16 @@ public class ImageCache {
         if (image != null) {
             return image;
         }
-        image = this.lowPriorityCache.get(cacheKey);
+        image = getFromLowPriorityCache(cacheKey);
         if (image != null) {
             return image;
         }
         return null;
+    }
+    
+    private BufferedImage getFromLowPriorityCache(long cacheKey) {
+        final SoftReference<BufferedImage> ref = this.lowPriorityCache.get(cacheKey);
+        return (ref != null) ? ref.get() : null;
     }
     
     private void placeImageInCache(long hashKey, BufferedImage image) {
@@ -182,8 +195,10 @@ public class ImageCache {
     
     private void placeImageInLowPriorityCache(long hashKey, BufferedImage image) {
         if (image != null) {
-            this.lowPriorityCache.put(hashKey, image);
-            lowPriorityCacheSize += image.getWidth() * image.getHeight() * 4;
+            final long size = image.getWidth() * image.getHeight() * 4;
+            final CacheSoftReference<Long, BufferedImage> ref = new CacheSoftReference<>(hashKey, size, image, lowPriorityCacheReferenceQueue);
+            this.lowPriorityCache.put(hashKey, ref);
+            lowPriorityCacheSize += size;
             debugPrintCacheSizes();
         }
     }
@@ -270,5 +285,42 @@ public class ImageCache {
     public void clearLowPriorityCache() {
         this.lowPriorityCache.clear();
         this.lowPriorityCacheSize = 0;
+    }
+    
+    private final class CacheCleanupThread extends Thread {
+        @Override
+        public void run() {
+            try {
+                while (true) {
+                    @SuppressWarnings("unchecked")
+                    final CacheSoftReference<Long,BufferedImage> ref = (CacheSoftReference<Long,BufferedImage>) lowPriorityCacheReferenceQueue.remove();
+                    if (ref == null) {
+                        continue;
+                    }
+                    lowPriorityCacheSize -= ref.getSize();
+                    lowPriorityCache.remove(ref.getKey());
+                }
+            } catch (InterruptedException e) {}
+        }
+    }
+    
+    private final class CacheSoftReference<K, V> extends SoftReference<V> {
+        
+        private final K key;
+        private final long size;
+        
+        public CacheSoftReference(K key, long size, V referent, ReferenceQueue<? super V> q) {
+            super(referent, q);
+            this.key = key;
+            this.size = size;
+        }
+        
+        public K getKey() {
+            return key;
+        }
+        
+        public long getSize() {
+            return size;
+        }
     }
 }

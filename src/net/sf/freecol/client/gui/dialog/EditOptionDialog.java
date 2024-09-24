@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -35,7 +35,7 @@ import net.sf.freecol.common.option.Option;
  */
 public class EditOptionDialog extends FreeColConfirmDialog {
 
-    private final OptionUI ui;
+    private final OptionUI<?> ui;
 
 
     /**
@@ -45,14 +45,20 @@ public class EditOptionDialog extends FreeColConfirmDialog {
      * @param frame The owner frame.
      * @param option The {@code Option} to operate on.
      */
-    public EditOptionDialog(FreeColClient freeColClient, JFrame frame, Option option) {
+    public EditOptionDialog(FreeColClient freeColClient, JFrame frame, Option<?> option) {
         super(freeColClient, frame);
 
         this.ui = OptionUI.getOptionUI(getGUI(), option, true);
         JPanel panel = new MigPanel(new MigLayout());
-        if (this.ui.getJLabel() == null) {
+        /*
+         * The JLabel was never added since the null check was
+         * inverted. Not enbling for now, since the options
+         * do not have titles in Messages.
+         *
+        if (this.ui.getJLabel() != null) {
             panel.add(this.ui.getJLabel(), "split 2");
         }
+        */
         panel.add(this.ui.getComponent());
 
         initializeConfirmDialog(frame, true, panel, null, "ok", "cancel");

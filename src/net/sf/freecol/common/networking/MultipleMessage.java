@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -77,6 +77,8 @@ public class MultipleMessage extends AttributeMessage {
     public MultipleMessage(Game game, FreeColXMLReader xr)
         throws XMLStreamException, FreeColException {
         this();
+        
+        setStringAttributeMap(xr.getAllAttributes());
         
         this.messages.clear();
         while (xr.moreTags()) {

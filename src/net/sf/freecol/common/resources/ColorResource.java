@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -51,11 +51,12 @@ public class ColorResource extends Resource {
     /**
      * Do not use directly.
      *
+     * @param cachingKey The caching key.
      * @param resourceLocator The {@code URI} used when loading this
      *     resource.
      */
-    public ColorResource(String primaryKey, URI resourceLocator) { //throws Exception {
-        super(primaryKey, resourceLocator);
+    public ColorResource(String cachingKey, URI resourceLocator) { //throws Exception {
+        super(cachingKey, resourceLocator);
 
         String colorName = resourceLocator.getSchemeSpecificPart()
             .substring(SCHEME.length());
@@ -100,7 +101,11 @@ public class ColorResource extends Resource {
     private static Color createColor(String colorName) {
         if (isHexString(colorName)) {
             try {
-                int col = Integer.decode(colorName);
+                /*
+                 * We have to read the value as a long and then cast it in order
+                 * to avoid overflow when specifying the alpha.
+                 */
+                final int col = (int) Long.decode(colorName).longValue();
                 return new Color(col, colorName.length() > 8);
             } catch (NumberFormatException e) {
                 logger.warning("Failed to decode hex colour string: "

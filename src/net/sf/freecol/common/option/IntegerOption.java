@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -40,6 +40,12 @@ public class IntegerOption extends AbstractOption<Integer> {
 
     /** The value of this option. */
     private int value;
+    
+    /**
+     * The loaded value before any modification. This is used when reverting back
+     * to the original value when "previewEnabled is used.
+     */
+    private int originalValue;
 
     /** A upper bound on the value of this option. */
     private int maximumValue = Integer.MAX_VALUE;
@@ -49,6 +55,13 @@ public class IntegerOption extends AbstractOption<Integer> {
     
     /** The step size to be used when this option is displayed using a spinner. */
     private int stepSize = 0;
+    
+    /**
+     * If <code>true</code>, the OptionUI will immediately apply the value when it's
+     * changed. This is essential functionality when adjusting the volume in the client
+     * options.
+     */
+    private boolean previewEnabled = false;
 
 
     /**
@@ -70,6 +83,34 @@ public class IntegerOption extends AbstractOption<Integer> {
         super(id, specification);
     }
 
+    
+    /**
+     * Checks if the option should have immediate effect when changed in
+     * the {@code OptionUI}.
+     * 
+     * @return If <code>true</code>, the OptionUI will immediately apply the
+     *      value when it's changed.
+     */
+    public boolean isPreviewEnabled() {
+        return previewEnabled;
+    }
+    
+    /**
+     * Sets if the option should have immediate effect when changed in
+     * the {@code OptionUI}.
+     * 
+     * @param previewEnabled The value to be applied.
+     */
+    public void setPreviewEnabled(boolean previewEnabled) {
+        this.previewEnabled = previewEnabled;
+    }
+    
+    /**
+     * Resets the value to the original value.
+     */
+    public void resetValue() {
+        setValue(originalValue);
+    }
 
     /**
      * Get the minimum allowed value.
@@ -185,6 +226,7 @@ public class IntegerOption extends AbstractOption<Integer> {
     private static final String MAXIMUM_VALUE_TAG = "maximumValue";
     private static final String MINIMUM_VALUE_TAG = "minimumValue";
     private static final String STEP_SIZE_TAG = "stepSize";
+    private static final String PREVIEW_ENABLED_TAG = "previewEnabled";
 
 
     /**
@@ -207,6 +249,10 @@ public class IntegerOption extends AbstractOption<Integer> {
         if (stepSize > 0) {
             xw.writeAttribute(STEP_SIZE_TAG, stepSize);
         }
+        
+        if (previewEnabled) {
+            xw.writeAttribute(PREVIEW_ENABLED_TAG, previewEnabled);
+        }
     }
 
     /**
@@ -220,9 +266,12 @@ public class IntegerOption extends AbstractOption<Integer> {
 
         minimumValue = xr.getAttribute(MINIMUM_VALUE_TAG, Integer.MIN_VALUE);
         
-        stepSize = xr.getAttribute(STEP_SIZE_TAG, 0); 
+        stepSize = xr.getAttribute(STEP_SIZE_TAG, 0);
+        
+        previewEnabled = xr.getAttribute(PREVIEW_ENABLED_TAG, false);
 
         value = limitValue(this.value);
+        originalValue = value;
     }
 
     /**

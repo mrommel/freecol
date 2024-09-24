@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022  The FreeCol Team
+ *  Copyright (C) 2002-2024  The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -41,7 +41,7 @@ public class SoundTest extends FreeColTestCase {
         co.load(FreeColDirectories.getBaseClientOptionsFile());
         final AudioMixerOption amo = co.getOption(ClientOptions.AUDIO_MIXER,
                                                   AudioMixerOption.class);
-        final PercentageOption po = co.getOption(ClientOptions.AUDIO_VOLUME,
+        final PercentageOption po = co.getOption(ClientOptions.MUSIC_VOLUME,
                                                  PercentageOption.class);
         po.setValue(10); // 10% volume
         try {
@@ -56,7 +56,8 @@ public class SoundTest extends FreeColTestCase {
         } catch (Exception e) {
             fail("Could not load base data: " + e.getMessage());
         }
-        ResourceManager.addMapping("testbase", baseData.getResourceMapping());
+        ResourceManager.setBaseData(baseData);
+        ResourceManager.prepare();
     }
 
     @Override
@@ -86,7 +87,8 @@ public class SoundTest extends FreeColTestCase {
 
     public void testClassic() {
         FreeColTcFile tcData = FreeColTcFile.getFreeColTcFile("classic");
-        ResourceManager.addMapping("testtc", tcData.getResourceMapping());
+        ResourceManager.setTcData(tcData);
+        ResourceManager.prepare();
 
         playSound("sound.intro.model.nation.english");
         playSound("sound.intro.model.nation.dutch");

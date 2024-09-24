@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -19,9 +19,11 @@
 
 package net.sf.freecol.common.io.sza;
 
-import java.awt.Component;
+import static net.sf.freecol.common.util.CollectionUtils.alwaysTrue;
+import static net.sf.freecol.common.util.CollectionUtils.max;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+
 import java.awt.Graphics2D;
-import java.awt.Image;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.BufferedReader;
@@ -44,7 +46,7 @@ import java.util.zip.ZipInputStream;
 
 import javax.imageio.ImageIO;
 
-import static net.sf.freecol.common.util.CollectionUtils.*;
+import net.sf.freecol.common.util.ImageUtils;
 
 
 /**
@@ -54,8 +56,6 @@ public final class SimpleZippedAnimation implements Iterable<AnimationEvent> {
 
     private static final class ImageAnimationEventImpl
         implements ImageAnimationEvent {
-
-        private static final Component _c = new Component() {};
         
         private final BufferedImage image;
         private final int durationInMs;
@@ -83,8 +83,7 @@ public final class SimpleZippedAnimation implements Iterable<AnimationEvent> {
         private AnimationEvent createScaledVersion(float scale) {
             final int width = (int)(getWidth() * scale);
             final int height = (int)(getHeight() * scale);
-            BufferedImage scaled = new BufferedImage(width, height,
-                BufferedImage.TYPE_INT_ARGB);
+            BufferedImage scaled = ImageUtils.createBufferedImage(width, height);
             Graphics2D g = scaled.createGraphics();
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
                                RenderingHints.VALUE_INTERPOLATION_BICUBIC);
@@ -106,7 +105,7 @@ public final class SimpleZippedAnimation implements Iterable<AnimationEvent> {
          * {@inheritDoc}
          */
         @Override
-        public Image getImage() {
+        public BufferedImage getImage() {
             return this.image;
         }
         

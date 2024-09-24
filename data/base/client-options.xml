@@ -29,10 +29,13 @@
     </optionGroup>
 
     <optionGroup id="clientOptions.display" >
+      <fullscreenDisplayModeOption id="model.option.fullscreenDisplayMode" defaultValue="" />
+      
       <!-- Control the display scale -->
       <rangeOption id="model.option.displayScaling"
                    defaultValue="0" localizedLabels="true">
         <rangeValue label="model.option.displayScaling.automatic" value="0"/>
+        <rangeValue label="model.option.displayScaling.75" value="75"/>
         <rangeValue label="model.option.displayScaling.100" value="100"/>
         <rangeValue label="model.option.displayScaling.125" value="125"/>
         <rangeValue label="model.option.displayScaling.150" value="150"/>
@@ -53,7 +56,18 @@
       <!-- Use XRender or not? -->
       <booleanOption id="model.option.useXRender"
                      defaultValue="true"/>
-      
+
+      <booleanOption id="model.option.useTerrainAnimations" defaultValue="true"/>
+
+      <rangeOption id="model.option.graphicsQuality"
+                   defaultValue="20" localizedLabels="true">
+        <rangeValue label="clientOptions.gui.graphicsQuality.lowest" value="0"/>
+        <rangeValue label="clientOptions.gui.graphicsQuality.low" value="10"/>
+        <rangeValue label="clientOptions.gui.graphicsQuality.normal" value="20"/>
+        <rangeValue label="clientOptions.gui.graphicsQuality.high" value="30"/>
+        <rangeValue label="clientOptions.gui.graphicsQuality.highest" value="40"/>
+      </rangeOption>      
+
       <!-- Animation speed for our units. -->
       <rangeOption id="model.option.moveAnimationSpeed"
                    defaultValue="3" localizedLabels="true">
@@ -107,12 +121,15 @@
         <!-- Option for autoscrolling when hitting the boundaries of the
              mapboard. -->
         <booleanOption id="model.option.autoScroll"
-                       defaultValue="false"/>
+                       defaultValue="true"/>
         <!-- Whether to display the grid by default or not. -->
         <booleanOption id="model.option.displayGrid"
                        defaultValue="false"/>
         <!-- Whether to display borders by default or not. -->
         <booleanOption id="model.option.displayBorders"
+                       defaultValue="false"/>
+        <!-- Whether to draw the fog of war on the actual map or not. -->
+        <booleanOption id="model.option.displayFogOfWar"
                        defaultValue="false"/>
         <!-- Whether to have a delay on a unit's last move or not. -->
         <booleanOption id="model.option.unitLastMoveDelay"
@@ -141,14 +158,7 @@
                        defaultValue="false"/>
         <!-- Whether to display the map controls by default or not. -->
         <booleanOption id="model.option.displayMapControls"
-                       defaultValue="true"/>
-        <!-- What type of map controls, corner or classic? -->
-        <stringOption id="model.option.mapControls"
-                      defaultValue="clientOptions.gui.mapControls.CornerMapControls">
-          <choice value="clientOptions.gui.mapControls.CornerMapControls"/>
-          <choice value="clientOptions.gui.mapControls.ClassicMapControls"/>
-        </stringOption>
-                       
+                       defaultValue="true"/>                       
         <!-- Draw the fog of war on the minimap. -->
         <booleanOption id="model.option.miniMapToggleFogOfWar"
                        defaultValue="true"/>
@@ -356,9 +366,15 @@
       <!-- Which mixer to use by default. -->
       <audioMixerOption id="model.option.audioMixer"
                         defaultValue="AUTO" />
-      <!-- The default volume percent. -->
-      <percentageOption id="model.option.audioVolume"
+
+      <!--The music volume -->
+      <percentageOption id="model.option.musicVolume"
                         defaultValue="100" previewEnabled="true"/>
+                        
+      <!--The sound effects volume -->
+      <percentageOption id="model.option.soundEffectsVolume"
+                        defaultValue="100" previewEnabled="true"/>
+                        
       <!-- Play an alert sound on message arrival. -->
       <booleanOption id="model.option.audioAlerts"
                      defaultValue="false"/>

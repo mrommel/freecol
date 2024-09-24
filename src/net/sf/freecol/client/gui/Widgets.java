@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -22,19 +22,26 @@ package net.sf.freecol.client.gui;
 import java.awt.Dimension;
 import java.awt.event.ActionListener;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.logging.Logger;
 
 import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 import javax.swing.filechooser.FileFilter;
 
+import net.miginfocom.swing.MigLayout;
 import net.sf.freecol.client.FreeColClient;
 import net.sf.freecol.client.gui.SwingGUI.PopupPosition;
 import net.sf.freecol.client.gui.dialog.CaptureGoodsDialog;
 import net.sf.freecol.client.gui.dialog.ChooseFoundingFatherDialog;
 import net.sf.freecol.client.gui.dialog.ConfirmDeclarationDialog;
+import net.sf.freecol.client.gui.dialog.DeprecatedFreeColDialog;
+import net.sf.freecol.client.gui.dialog.DialogPanel;
 import net.sf.freecol.client.gui.dialog.DifficultyDialog;
 import net.sf.freecol.client.gui.dialog.DumpCargoDialog;
 import net.sf.freecol.client.gui.dialog.EditOptionDialog;
@@ -42,10 +49,8 @@ import net.sf.freecol.client.gui.dialog.EditSettlementDialog;
 import net.sf.freecol.client.gui.dialog.EmigrationDialog;
 import net.sf.freecol.client.gui.dialog.EndTurnDialog;
 import net.sf.freecol.client.gui.dialog.FirstContactDialog;
-import net.sf.freecol.client.gui.dialog.FreeColChoiceDialog;
-import net.sf.freecol.client.gui.dialog.FreeColConfirmDialog;
 import net.sf.freecol.client.gui.dialog.FreeColDialog;
-import net.sf.freecol.client.gui.dialog.FreeColStringInputDialog;
+import net.sf.freecol.client.gui.dialog.FreeColDialog.DialogApi;
 import net.sf.freecol.client.gui.dialog.GameOptionsDialog;
 import net.sf.freecol.client.gui.dialog.LoadDialog;
 import net.sf.freecol.client.gui.dialog.LoadingSavegameDialog;
@@ -57,12 +62,10 @@ import net.sf.freecol.client.gui.dialog.NegotiationDialog;
 import net.sf.freecol.client.gui.dialog.Parameters;
 import net.sf.freecol.client.gui.dialog.ParametersDialog;
 import net.sf.freecol.client.gui.dialog.PreCombatDialog;
-import net.sf.freecol.client.gui.dialog.RiverStyleDialog;
 import net.sf.freecol.client.gui.dialog.SaveDialog;
 import net.sf.freecol.client.gui.dialog.ScaleMapSizeDialog;
-import net.sf.freecol.client.gui.dialog.SelectAmountDialog;
 import net.sf.freecol.client.gui.dialog.SelectDestinationDialog;
-import net.sf.freecol.client.gui.dialog.SelectTributeAmountDialog;
+import net.sf.freecol.client.gui.dialog.SelectGoodsAmountDialog;
 import net.sf.freecol.client.gui.dialog.VictoryDialog;
 import net.sf.freecol.client.gui.dialog.WarehouseDialog;
 import net.sf.freecol.client.gui.panel.AboutPanel;
@@ -74,6 +77,8 @@ import net.sf.freecol.client.gui.panel.ErrorPanel;
 import net.sf.freecol.client.gui.panel.EuropePanel;
 import net.sf.freecol.client.gui.panel.EventPanel;
 import net.sf.freecol.client.gui.panel.FindSettlementPanel;
+import net.sf.freecol.client.gui.panel.FreeColButton;
+import net.sf.freecol.client.gui.panel.FreeColButton.ButtonStyle;
 import net.sf.freecol.client.gui.panel.FreeColPanel;
 import net.sf.freecol.client.gui.panel.IndianSettlementPanel;
 import net.sf.freecol.client.gui.panel.InformationPanel;
@@ -86,6 +91,7 @@ import net.sf.freecol.client.gui.panel.TilePanel;
 import net.sf.freecol.client.gui.panel.TradeRouteInputPanel;
 import net.sf.freecol.client.gui.panel.TradeRoutePanel;
 import net.sf.freecol.client.gui.panel.TrainPanel;
+import net.sf.freecol.client.gui.panel.Utility;
 import net.sf.freecol.client.gui.panel.WorkProductionPanel;
 import net.sf.freecol.client.gui.panel.colopedia.ColopediaPanel;
 import net.sf.freecol.client.gui.panel.report.CompactLabourReport;
@@ -142,8 +148,6 @@ import net.sf.freecol.common.util.Utils;
  */
 public final class Widgets {
 
-    private static final Logger logger = Logger.getLogger(Widgets.class.getName());
-
     /** The game client. */
     private final FreeColClient freeColClient;
 
@@ -155,7 +159,7 @@ public final class Widgets {
     private class DialogCallback<T> implements Runnable {
         
         /** The dialog to show. */
-        private final FreeColDialog<T> fcd;
+        private final DeprecatedFreeColDialog<T> fcd;
 
         /** A rough position for the dialog. */
         private final PopupPosition pos;
@@ -171,7 +175,7 @@ public final class Widgets {
          * @param pos A {@code PopupPosition} for the dialog.
          * @param handler The {@code DialogHandler} to call when run.
          */
-        public DialogCallback(FreeColDialog<T> fcd, PopupPosition pos,
+        public DialogCallback(DeprecatedFreeColDialog<T> fcd, PopupPosition pos,
                               DialogHandler<T> handler) {
             this.fcd = fcd;
             this.pos = pos;
@@ -227,14 +231,38 @@ public final class Widgets {
      * @param okKey The text displayed on the "ok"-button.
      * @param cancelKey The text displayed on the "cancel"-button.
      * @param pos A {@code PopupPosition} for the dialog.
+     * @param defaultOk The OK button gets the focus if {@code true}, else
+     *      it's the cancel button that gets focused.
      * @return True if the user clicked the "ok"-button.
      */
-    public boolean confirm(StringTemplate tmpl, ImageIcon icon,
-                           String okKey, String cancelKey, PopupPosition pos) {
-        FreeColConfirmDialog dialog
-            = new FreeColConfirmDialog(this.freeColClient, getFrame(), true,
-                                       tmpl, icon, okKey, cancelKey);
-        return this.canvas.showFreeColDialog(dialog, pos);
+    public boolean modalConfirmDialog(StringTemplate tmpl, ImageIcon icon,
+                           String okKey, String cancelKey, PopupPosition pos,
+                           boolean defaultOk) {
+        final FreeColDialog<Boolean> dialog = new FreeColDialog<Boolean>(api -> {
+            final JPanel content = new JPanel(new MigLayout("fill"));
+            if (icon != null) {
+                content.add(new JLabel(icon), "split 2, gap 0 20 0 unrel");
+            }
+            content.add(Utility.localizedTextArea(tmpl), "gap 0 0 0 unrel");
+            
+            final JButton okButton = new FreeColButton(Messages.message(okKey)).withButtonStyle(ButtonStyle.IMPORTANT);
+            final JButton cancelButton = new FreeColButton(Messages.message(cancelKey));
+            okButton.addActionListener(ae -> {
+                api.setValue(Boolean.TRUE);
+            });
+            cancelButton.addActionListener(ae -> {
+                api.setValue(null);
+            });
+
+            content.add(okButton, "newline, split 2, tag ok");
+            content.add(cancelButton, "tag cancel");
+            
+            api.setInitialFocusComponent((defaultOk) ? okButton : cancelButton);
+            
+            return content;
+        });
+        
+        return (canvas.displayModalDialog(dialog) != null);
     }
 
     /**
@@ -250,35 +278,151 @@ public final class Widgets {
      * @return The corresponding member of the values array to the selected
      *     option, or null if no choices available.
      */
-    public <T> T getChoice(StringTemplate tmpl, ImageIcon icon,
-                           String cancelKey, List<ChoiceItem<T>> choices,
-                           PopupPosition pos) {
-        if (choices.isEmpty()) return null;
-        FreeColChoiceDialog<T> dialog
-            = new FreeColChoiceDialog<>(this.freeColClient, getFrame(), true,
-                                        tmpl, icon, cancelKey, choices);
-        return this.canvas.showFreeColDialog(dialog, pos);
+    public <T> T modalChoiceDialog(StringTemplate tmpl, ImageIcon icon, String cancelKey, List<ChoiceItem<T>> choices, PopupPosition pos) {
+        if (choices.isEmpty()) {
+            return null;
+        }
+
+        final FreeColDialog<T> dialog = createChoiceDialog(tmpl, icon, cancelKey, choices);
+        return canvas.displayModalDialog(dialog);
+    }
+
+
+    private <T> FreeColDialog<T> createChoiceDialog(StringTemplate tmpl, ImageIcon icon, String cancelKey,
+            List<ChoiceItem<T>> choices) {
+        final List<ChoiceItem<T>> allChoices = new ArrayList<>(choices);
+        if (cancelKey != null) {
+            ChoiceItem<T> cancelOption = new ChoiceItem<>(Messages.message(cancelKey), (T) null).cancelOption();
+            final boolean hasDefault = allChoices.stream().anyMatch(ChoiceItem::isDefault);
+            if (!hasDefault) {
+                cancelOption = cancelOption.defaultOption();
+            }
+            allChoices.add(cancelOption);
+        }
+        
+        final int choiceWrap;
+        if (choices.size() > 16) {
+            choiceWrap = (int) Math.sqrt(choices.size()) + 1;  
+        } else {
+            choiceWrap = 4;
+        }
+        
+        final FreeColDialog<T> dialog = new FreeColDialog<T>(api -> {
+            final JPanel content = new JPanel(new MigLayout("fill"));
+            if (icon != null) {
+                content.add(new JLabel(icon), "span, split 2, gap 0 20 0 unrel");
+                content.add(Utility.localizedTextArea(tmpl), "gap 0 0 0 unrel, wrap");
+            } else {
+                content.add(Utility.localizedTextArea(tmpl), "span, gap 0 0 0 unrel, wrap");
+            }
+            
+            int i = 0;
+            boolean sameSize = allChoices.size() > 4;
+            for (ChoiceItem<T> ci : allChoices) {
+                final JButton button = createButtonFromChoiceItem(api, ci);
+                
+                List<String> layout = new ArrayList<>();
+                if (i % choiceWrap == 0) {
+                    layout.add("newline, split " + choiceWrap);
+                }
+                if (sameSize) {
+                    layout.add("sg");
+                } else {
+                    if (ci.isOK()) {
+                        layout.add("tag ok");
+                    }
+                    if (ci.isCancel()) {
+                        layout.add("tag cancel");
+                    }
+                }
+                final String layoutStr = layout.stream().reduce((a, b) -> a + ", " + b).orElse(null);
+                content.add(button, layoutStr);
+                i++;
+            }
+
+            return content;
+        });
+        return dialog;
+    }
+
+    private <T> JButton createButtonFromChoiceItem(DialogApi<T> api, ChoiceItem<T> ci) {
+        final ButtonStyle style = (ci.isOK()) ? ButtonStyle.IMPORTANT : ButtonStyle.SIMPLE;
+        final JButton button = new FreeColButton(ci.toString(), ci.getIcon()).withButtonStyle(style);
+        button.addActionListener(ae -> {
+           api.setValue(ci.getObject()); 
+        });
+        if (ci.isDefault()) {
+            api.setInitialFocusComponent(button);
+        }
+        button.setEnabled(ci.isEnabled());
+        return button;
     }
 
     /**
      * Show a modal dialog with a text field and a ok/cancel option.
      *
-     * @param tmpl A {@code StringTemplate} that explains the
-     *     action to the user.
+     * @param tmpl A {@code StringTemplate} that explains the action to the user.
      * @param defaultValue The default value appearing in the text field.
      * @param okKey A key displayed on the "ok"-button.
-     * @param cancelKey A key displayed on the optional "cancel"-button.
+     * @param cancelKey A key displayed on the optional "cancel"-button. Use {@code null} to
+     *      avoid displaying a cancel button.
      * @param pos A {@code PopupPosition} for the dialog.
      * @return The text the user entered, or null if cancelled.
+     * @see #inputDialog(StringTemplate, String, String, String, PopupPosition, DialogHandler)
      */
-    public String getInput(StringTemplate tmpl, String defaultValue,
-                           String okKey, String cancelKey,
-                           PopupPosition pos) {
-        FreeColStringInputDialog dialog
-            = new FreeColStringInputDialog(this.freeColClient, getFrame(), true,
-                                           tmpl, defaultValue,
-                                           okKey, cancelKey);
-        return this.canvas.showFreeColDialog(dialog, pos);
+    public String modalInputDialog(StringTemplate tmpl, String defaultValue, String okKey, String cancelKey, PopupPosition pos) {
+        final FreeColDialog<String> dialog = createInputDialog(tmpl, defaultValue, okKey, cancelKey);
+        return canvas.displayModalDialog(dialog);
+    }
+    
+    /**
+     * Show a non-modal dialog with a text field and a ok/cancel option.
+     *
+     * @param tmpl A {@code StringTemplate} that explains the action to the user.
+     * @param defaultValue The default value appearing in the text field.
+     * @param okKey A key displayed on the "ok"-button.
+     * @param cancelKey A key displayed on the optional "cancel"-button. Use {@code null} to
+     *      avoid displaying a cancel button.
+     * @param pos A {@code PopupPosition} for the dialog.
+     * @param handler A {@code DialogHandler} for the dialog response.
+     */
+    public void inputDialog(StringTemplate tmpl, String defaultValue,
+            String okKey, String cancelKey, PopupPosition pos, DialogHandler<String> handler) {
+        
+        final FreeColDialog<String> dialog = createInputDialog(tmpl, defaultValue, okKey, cancelKey);
+        final DialogPanel<String> panel = new DialogPanel<String>(freeColClient, dialog, handler);
+        this.canvas.showFreeColPanel(panel, pos, true);
+    }
+
+    private FreeColDialog<String> createInputDialog(StringTemplate tmpl, String defaultValue, String okKey, String cancelKey) {
+        final FreeColDialog<String> dialog = new FreeColDialog<String>(api -> {
+            final JPanel content = new JPanel(new MigLayout("fill"));
+            content.add(Utility.localizedTextArea(tmpl));
+            final JTextField input = new JTextField(defaultValue != null ? defaultValue : "");
+            content.add(input, "newline, growx");
+            input.addActionListener(ae -> {
+                api.setValue(input.getText());
+            });
+            
+            final JButton okButton = new FreeColButton(Messages.message(okKey)).withButtonStyle(ButtonStyle.IMPORTANT);
+            okButton.addActionListener(ae -> {
+                api.setValue(input.getText());
+            });
+            content.add(okButton, "newline, split 2, tag ok");
+            
+            if (cancelKey != null) {
+                final JButton cancelButton = new FreeColButton(Messages.message(cancelKey));
+                cancelButton.addActionListener(ae -> {
+                    api.setValue(null);
+                });
+                content.add(cancelButton, "tag cancel");
+            }
+            
+            api.setInitialFocusComponent(input);
+            
+            return content;
+        });
+        return dialog;
     }
 
 
@@ -436,15 +580,16 @@ public final class Widgets {
      * @param spec The enclosing {@code Specification}.
      * @param group The {@code OptionGroup} containing the difficulty.
      * @param editable If the options should be editable.
+     * @param dialogHandler Callback executed when the dialog gets closed.
      * @return The resulting {@code OptionGroup}.
      */
-    public OptionGroup showDifficultyDialog(Specification spec,
+    public void showDifficultyDialog(Specification spec,
                                             OptionGroup group,
-                                            boolean editable) {
-        DifficultyDialog dialog
-            = new DifficultyDialog(this.freeColClient, getFrame(),
-                                   spec, group, editable);
-        return this.canvas.showFreeColDialog(dialog, null);
+                                            boolean editable,
+                                            DialogHandler<OptionGroup> dialogHandler) {
+        final DifficultyDialog dialog = new DifficultyDialog(this.freeColClient, getFrame(), spec, group, editable);
+        dialog.setDialogHandler(dialogHandler);
+        this.canvas.showFreeColPanel(dialog, PopupPosition.CENTERED, true);
     }
 
     /**
@@ -467,7 +612,7 @@ public final class Widgets {
      * @param op The {@code Option} to edit.
      * @return The response returned by the dialog.
      */
-    public boolean showEditOptionDialog(Option op) {
+    public boolean showEditOptionDialog(Option<?> op) {
         if (op == null) return false;
         EditOptionDialog dialog
             = new EditOptionDialog(this.freeColClient, getFrame(), op);
@@ -495,13 +640,9 @@ public final class Widgets {
      *     fountain of youth.
      * @param handler A {@code DialogHandler} for the dialog response.
      */
-    public void showEmigrationDialog(Player player, boolean fountainOfYouth,
-                                     DialogHandler<Integer> handler) {
-        new DialogCallback<>(new EmigrationDialog(this.freeColClient,
-                                                  getFrame(),
-                                                  player.getEurope(),
-                                                  fountainOfYouth),
-                             null, handler);
+    public void showEmigrationDialog(Player player, boolean fountainOfYouth, DialogHandler<Integer> handler) {
+        final FreeColPanel panel = new EmigrationDialog(this.freeColClient, player.getEurope(), fountainOfYouth, handler);
+        this.canvas.showFreeColPanel(panel, PopupPosition.CENTERED, true);
     }
 
     /**
@@ -510,11 +651,9 @@ public final class Widgets {
      * @param units A list of {@code Unit}s that could still move.
      * @param handler A {@code DialogHandler} for the dialog response.
      */
-    public void showEndTurnDialog(List<Unit> units,
-                                  DialogHandler<Boolean> handler) {
-        new DialogCallback<>(new EndTurnDialog(this.freeColClient,
-                                               getFrame(), units),
-                             null, handler);
+    public void showEndTurnDialog(List<Unit> units) {
+        final EndTurnDialog endTurnPanel = new EndTurnDialog(this.freeColClient, units);
+        this.canvas.showFreeColPanel(endTurnPanel, PopupPosition.LEFT, true);
     }
 
     /**
@@ -595,22 +734,20 @@ public final class Widgets {
                                        Tile tile, int settlementCount,
                                        PopupPosition pos,
                                        DialogHandler<Boolean> handler) {
-        new DialogCallback<>(new FirstContactDialog(this.freeColClient,
-                                                    getFrame(), player, other,
-                                                    tile, settlementCount),
-                             pos, handler);
+        final FirstContactDialog dialog = new FirstContactDialog(this.freeColClient, player, other, tile, settlementCount, handler);
+        this.canvas.showFreeColPanel(dialog, pos, true);
     }
 
     /**
      * Show the GameOptionsDialog.
      *
      * @param editable Should the game options be editable?
-     * @return The {@code OptionGroup} selected.
+     * @param dialogHandler A callback for handling the closing of the dialog.
      */
-    public OptionGroup showGameOptionsDialog(boolean editable) {
-        GameOptionsDialog dialog
-            = new GameOptionsDialog(this.freeColClient, getFrame(), editable);
-        return this.canvas.showFreeColDialog(dialog, null);
+    public void showGameOptionsDialog(boolean editable, DialogHandler<OptionGroup> dialogHandler) {
+        final GameOptionsDialog dialog = new GameOptionsDialog(this.freeColClient, getFrame(), editable);
+        dialog.setDialogHandler(dialogHandler);
+        this.canvas.showFreeColPanel(dialog, PopupPosition.CENTERED, true);
     }
 
     /**
@@ -659,7 +796,7 @@ public final class Widgets {
                                    new String[] { Messages.message(tmpl) },
                                    new FreeColObject[] { displayObject },
                                    new ImageIcon[] { icon });
-        return this.canvas.showFreeColPanel(panel, pos, true);
+        return this.canvas.showFreeColPanel(panel, pos, false);
     }
 
     /**
@@ -711,13 +848,11 @@ public final class Widgets {
      * Show the map generator options dialog.
      *
      * @param editable Should these options be editable.
-     * @return The {@code OptionGroup} as edited.
      */
-    public OptionGroup showMapGeneratorOptionsDialog(boolean editable) {
-        MapGeneratorOptionsDialog dialog
-            = new MapGeneratorOptionsDialog(this.freeColClient, getFrame(),
-                                            editable);
-        return this.canvas.showFreeColDialog(dialog, null);
+    public void showMapGeneratorOptionsDialog(boolean editable, DialogHandler<OptionGroup> dialogHandler) {
+        final MapGeneratorOptionsDialog dialog = new MapGeneratorOptionsDialog(this.freeColClient, getFrame(), editable);
+        dialog.setDialogHandler(dialogHandler);
+        this.canvas.showFreeColPanel(dialog, PopupPosition.CENTERED, true);
     }
 
     /**
@@ -726,9 +861,8 @@ public final class Widgets {
      * @return The response returned by the dialog.
      */
     public Dimension showMapSizeDialog() {
-        MapSizeDialog dialog
-            = new MapSizeDialog(this.freeColClient, getFrame());
-        return this.canvas.showFreeColDialog(dialog, null);
+        final FreeColDialog<Dimension> dialog = MapSizeDialog.create();
+        return this.canvas.displayModalDialog(dialog);
     }
 
     /**
@@ -759,13 +893,8 @@ public final class Widgets {
      * @param handler A {@code DialogHandler} for the dialog response.
      */
     public void showNamingDialog(StringTemplate tmpl, String defaultName,
-                                 PopupPosition pos,
-                                 DialogHandler<String> handler) {
-        new DialogCallback<>(new FreeColStringInputDialog(this.freeColClient,
-                                                          getFrame(), false,
-                                                          tmpl, defaultName,
-                                                          "ok", null),
-                             pos, handler);
+            PopupPosition pos, DialogHandler<String> handler) {
+        inputDialog(tmpl, defaultName, "ok", "cancel", pos, handler);
     }
 
     /**
@@ -797,17 +926,11 @@ public final class Widgets {
      * @param comment An optional {@code StringTemplate} containing a
      *     commentary message.
      * @param pos A {@code PopupPosition} for the dialog.
-     * @return An updated agreement.
      */
-    public DiplomaticTrade showNegotiationDialog(FreeColGameObject our,
-                                                 FreeColGameObject other,
-                                                 DiplomaticTrade agreement,
-                                                 StringTemplate comment,
-                                                 PopupPosition pos) {
-        NegotiationDialog dialog
-            = new NegotiationDialog(this.freeColClient, getFrame(),
-                                    our, other, agreement, comment);
-        return this.canvas.showFreeColDialog(dialog, pos);
+    public FreeColPanel showNegotiationDialog(FreeColGameObject our, FreeColGameObject other, DiplomaticTrade agreement,
+            StringTemplate comment, PopupPosition pos, DialogHandler<DiplomaticTrade> handler) {
+        final NegotiationDialog dialog = new NegotiationDialog(this.freeColClient, our, other, agreement, comment, handler);
+        return this.canvas.showFreeColPanel(dialog, pos, true);
     }
 
     /**
@@ -909,9 +1032,13 @@ public final class Widgets {
      * @return The response returned by the dialog.
      */
     public String showRiverStyleDialog(List<String> styles) {
-        RiverStyleDialog dialog
-            = new RiverStyleDialog(this.freeColClient, getFrame(), styles);
-        return this.canvas.showFreeColDialog(dialog, null);
+        final List<ChoiceItem<String>> c = new ArrayList<>();
+        for (String style : styles) {
+            c.add(new ChoiceItem<>(null, style)
+                .setIcon(new ImageIcon(freeColClient.getGUI().getFixedImageLibrary().getSmallerRiverImage(style))));
+        }
+        
+        return modalChoiceDialog(StringTemplate.template("riverStyleDialog.text"), null, "cancel", c, null);
     }
 
     /**
@@ -951,13 +1078,9 @@ public final class Widgets {
      * @param needToPay If true, check the player has sufficient funds.
      * @return The amount selected.
      */
-    public int showSelectAmountDialog(GoodsType goodsType, int available,
-                                      int defaultAmount, boolean needToPay) {
-        FreeColDialog<Integer> dialog
-            = new SelectAmountDialog(this.freeColClient, getFrame(),
-                                     goodsType, available,
-                                     defaultAmount, needToPay);
-        Integer result = this.canvas.showFreeColDialog(dialog, null);
+    public int showSelectAmountDialog(GoodsType goodsType, int available, int defaultAmount, boolean needToPay) {
+        final FreeColDialog<Integer> dialog = SelectGoodsAmountDialog.create(freeColClient, goodsType, available, defaultAmount, needToPay);
+        final Integer result = this.canvas.displayModalDialog(dialog);
         return (result == null) ? -1 : result;
     }
 
@@ -1000,13 +1123,14 @@ public final class Widgets {
      * @param maximum The maximum amount available.
      * @return The amount selected.
      */
-    public int showSelectTributeAmountDialog(StringTemplate question,
-                                             int maximum) {
-        FreeColDialog<Integer> dialog
-            = new SelectTributeAmountDialog(this.freeColClient, getFrame(),
-                                            question, maximum);
-        Integer result = this.canvas.showFreeColDialog(dialog, null);
-        return (result == null) ? -1 : result;
+    public int showSelectTributeAmountDialog(StringTemplate question, int maximum) {
+        final String resultString = modalInputDialog(question, "" + maximum, "ok", "cancel", null);
+        int result = -1;
+        try {
+            result = Integer.parseInt(resultString);
+        } catch (NumberFormatException nfe) {}
+        
+        return (result <= 0 || result > maximum) ? null : result;
     }
 
     /**
@@ -1099,10 +1223,9 @@ public final class Widgets {
      * @param colony The {@code Colony} to display.
      * @return The response returned by the dialog.
      */
-    public boolean showWarehouseDialog(Colony colony) {
-        WarehouseDialog dialog
-            = new WarehouseDialog(this.freeColClient, getFrame(), colony);
-        return this.canvas.showFreeColDialog(dialog, null);
+    public void showWarehouseDialog(Colony colony, DialogHandler<Boolean> handler) {
+        final WarehouseDialog dialog = new WarehouseDialog(this.freeColClient, colony, handler);
+        this.canvas.showFreeColPanel(dialog, PopupPosition.CENTERED, true);
     }
 
     /**

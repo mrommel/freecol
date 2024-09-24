@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -59,7 +59,7 @@ public final class ReportExplorationPanel extends ReportPanel {
         reportPanel.setLayout(new MigLayout("wrap 5, fillx", "", ""));
 
         // Header Row
-        Font font = FontLibrary.getUnscaledFont("normal-bold-tiny");
+        Font font = FontLibrary.getScaledFont("normal-bold-tiny");
         JLabel nameOfRegion = Utility.localizedLabel("report.exploration.nameOfRegion");
         nameOfRegion.setFont(font);
         reportPanel.add(nameOfRegion);

@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -31,14 +31,12 @@ import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.util.logging.Logger;
 
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
 
 import net.sf.freecol.client.FreeColClient;
 import net.sf.freecol.client.control.InGameController;
-import net.sf.freecol.client.gui.FontLibrary;
 import net.sf.freecol.client.gui.GUI;
 import net.sf.freecol.client.gui.ImageLibrary;
 import net.sf.freecol.client.gui.panel.CargoPanel;
@@ -64,10 +62,7 @@ import net.sf.freecol.common.model.Unit.UnitState;
  * This label holds Unit data in addition to the JLabel data, which makes it
  * ideal to use for drag and drop purposes.
  */
-public final class UnitLabel extends FreeColLabel
-        implements ActionListener, CargoLabel, Draggable {
-
-    private static final Logger logger = Logger.getLogger(UnitLabel.class.getName());
+public final class UnitLabel extends FreeColLabel implements ActionListener, CargoLabel, Draggable {
 
     /** The different actions a {@code Unit} is allowed to take. */
     public enum UnitAction {
@@ -91,9 +86,6 @@ public final class UnitLabel extends FreeColLabel
 
     /** The unit this is a label for. */
     private final Unit unit;
-
-    /** Is this a currently selected unit? */
-    private boolean selected;
 
     /** Is this a small label? */
     private boolean isSmall;
@@ -144,11 +136,12 @@ public final class UnitLabel extends FreeColLabel
                      boolean isSmall, boolean ignoreLocation) {
         this.freeColClient = freeColClient;
         this.unit = unit;
-        this.selected = false;
         this.isSmall = isSmall;
         this.ignoreLocation = ignoreLocation;
-        this.tinyFont = FontLibrary.getUnscaledFont("normal-plain-tiny");
+        this.tinyFont = freeColClient.getGUI().getFixedImageLibrary().getScaledFont("normal-plain-tiny", null);
 
+        setHorizontalAlignment(CENTER);
+        
         updateIcon();
     }
 
@@ -181,15 +174,6 @@ public final class UnitLabel extends FreeColLabel
     }
 
     /**
-     * Sets whether or not this unit should be selected.
-     *
-     * @param b Whether or not this unit should be selected.
-     */
-    public void setSelected(boolean b) {
-        this.selected = b;
-    }
-
-    /**
      * Makes a smaller version.
      *
      * @param isSmall The image will be smaller if set to {@code true}.
@@ -203,10 +187,7 @@ public final class UnitLabel extends FreeColLabel
         } else {
             Icon imageIcon = new ImageIcon(lib.getScaledUnitImage(this.unit));
             if (this.unit.getLocation() instanceof ColonyTile) {
-                Dimension tileSize = lib.scale(ImageLibrary.TILE_SIZE);
-                tileSize.width /= 2;
-                tileSize.height = imageIcon.getIconHeight();
-                setSize(tileSize);
+                setPreferredSize(new Dimension(lib.scale(ImageLibrary.TILE_SIZE).width, imageIcon.getIconHeight()));
             } else {
                 setPreferredSize(null);
             }
@@ -364,7 +345,6 @@ public final class UnitLabel extends FreeColLabel
         updateIcon();
     }
 
-
     // Override JComponent
 
     /**
@@ -374,17 +354,9 @@ public final class UnitLabel extends FreeColLabel
     public void paintComponent(Graphics g) {
         final Player player = this.freeColClient.getMyPlayer();
         final ImageLibrary lib = getImageLibrary();
-        if (ignoreLocation || selected
-            || (!this.unit.isCarrier()
-                && this.unit.getState() != UnitState.SENTRY)) {
-            setEnabled(true);
-        } else if (!player.owns(this.unit) && this.unit.getColony() == null) {
-            setEnabled(true);
-        } else {
-            setEnabled(false);
-        }
 
         super.paintComponent(g);
+        
         if (ignoreLocation) return;
 
         if (this.unit.getLocation() instanceof ColonyTile) {
@@ -396,9 +368,16 @@ public final class UnitLabel extends FreeColLabel
                 if (production > 0) {
                     ProductionLabel pl = new ProductionLabel(this.freeColClient,
                         new AbstractGoods(workType, production));
-                    g.translate(0, 10);
+
+                    final int visualOffsetY = -lib.scaleInt(5);
+                    
+                    final Dimension size = getSize();
+                    final Dimension plSize = pl.getPreferredSize();                    
+                    final int x = (size.width - plSize.width) / 2;
+                    final int y = (size.height - plSize.height) / 2 + visualOffsetY;
+                    g.translate(x, y);
                     pl.paintComponent(g);
-                    g.translate(0, -10);
+                    g.translate(-x, -y);
                 }
             }
         } else if (getParent() instanceof ColonyPanel.OutsideColonyPanel ||

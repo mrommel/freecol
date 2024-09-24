@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -45,10 +45,12 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import javax.swing.filechooser.FileFilter;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
+import net.sf.freecol.common.MemoryManager;
 import net.sf.freecol.common.i18n.Messages;
 import net.sf.freecol.common.resources.ImageResource;
 import net.sf.freecol.common.resources.Resource;
@@ -203,8 +205,9 @@ public class FreeColDataFile {
      *      data files.
      */
     private List<String> handleResources(final Properties properties, ResourceMapping rc) {
-        List<String> virtualResources = new ArrayList<>();
-        Enumeration<?> pn = properties.propertyNames();
+        final ResourceFactory resourceFactory = new ResourceFactory();
+        final List<String> virtualResources = new ArrayList<>();
+        final Enumeration<?> pn = properties.propertyNames();
         while (pn.hasMoreElements()) {
             final String key = (String) pn.nextElement();
             
@@ -219,18 +222,27 @@ public class FreeColDataFile {
             if (value.startsWith(resourceScheme)) {
                 virtualResources.add(updatedKey);
             } else {
-                handleNormalResource(rc, key, value);
+                handleNormalResource(resourceFactory, rc, key, value);
             }
         }
         return virtualResources;
     }
 
-    private void handleNormalResource(ResourceMapping rc, final String key, final String value) {
+    private void handleNormalResource(ResourceFactory resourceFactory, ResourceMapping rc, final String key, final String value) {
         final URI uri = getURI(value);
         if (uri == null) {
             return;
         }
-        final Resource resource = ResourceFactory.createResource(key, uri);
+        
+        /*
+         * The caching key should be (and only be) the same when it's the
+         * same actual resource data (for example, the same image file).
+         * 
+         * Please note that the key is not suitable for a caching key,
+         * since the resource might get replaced by a mod.
+         */
+        final String cachingKey = uri.toString();
+        final Resource resource = resourceFactory.createResource(key, cachingKey, uri);
         
         /*
          * Rivers need new keys in order to support variations.
@@ -239,7 +251,7 @@ public class FreeColDataFile {
         
         if (resource instanceof ImageResource && supportsVariations) {
             final ImageResource imageResource = (ImageResource) resource;
-            extendWithAdditionalSizesAndVariations(imageResource, value);
+            extendWithAdditionalSizesAndVariations(resourceFactory, imageResource, value);
         }
         
         if (resource != null) {
@@ -309,7 +321,7 @@ public class FreeColDataFile {
         return (key.endsWith(ending)) ? key.substring(0, key.length() - 3) : key;
     }
     
-    private void extendWithAdditionalSizesAndVariations(ImageResource imageResource, String value) {
+    private void extendWithAdditionalSizesAndVariations(ResourceFactory resourceFactory, ImageResource imageResource, String value) {
         Map<URI, List<URI>> variationsWithAlternateSizes = findVariationsWithAlternateSizes(value);
         imageResource.addAlternativeResourceLocators(variationsWithAlternateSizes.get(null));
         
@@ -317,7 +329,7 @@ public class FreeColDataFile {
             .stream()
             .filter(entry -> entry.getKey() != null)
             .forEach(entry -> {
-                final ImageResource variationResource = (ImageResource) ResourceFactory.createResource(imageResource.getPrimaryKey(), entry.getKey());
+                final ImageResource variationResource = (ImageResource) resourceFactory.createResource("", imageResource.getCachingKey(), entry.getKey());
                 if (variationResource != null) {
                     variationResource.addAlternativeResourceLocators(entry.getValue());
                     imageResource.addVariation(variationResource);
@@ -347,12 +359,20 @@ public class FreeColDataFile {
              * Using LinkedHashMap to ensure we keep the variations in order.
              */
             final Map<URI, List<URI>> result = new LinkedHashMap<>();
-            result.put(null, findFilesWithVariationOrAlternativeSizeAsUri(filePath, false));
+            if (MemoryManager.isHighQualityGraphicsEnabled()) {
+                result.put(null, findFilesWithVariationOrAlternativeSizeAsUri(filePath, false));
+            } else {
+                result.put(null, List.of());
+            }
             
             final List<Path> variations = findFilesWithVariationOrAlternativeSize(filePath, true);
             for (Path variationPath : variations) {
-                result.put(variationPath.toUri(), findFilesWithVariationOrAlternativeSizeAsUri(variationPath, false));
-            }
+                if (MemoryManager.isHighQualityGraphicsEnabled()) {
+                    result.put(variationPath.toUri(), findFilesWithVariationOrAlternativeSizeAsUri(variationPath, false));
+                } else {
+                    result.put(variationPath.toUri(), List.of());
+                }
+            } 
             
             return result;
         } catch (IOException | URISyntaxException e) {
@@ -368,8 +388,11 @@ public class FreeColDataFile {
     }
 
     private List<URI> findFilesWithVariationOrAlternativeSizeAsUri(final Path filePath, boolean findVariation) throws IOException {
-        return findFilesWithVariationOrAlternativeSize(filePath, findVariation)
-                .stream()
+        return toUris(findFilesWithVariationOrAlternativeSize(filePath, findVariation));
+    }
+    
+    private List<URI> toUris(List<Path> paths) {
+        return paths.stream()
                 .map(p -> p.toUri())
                 .collect(Collectors.toList());
     }
@@ -387,12 +410,12 @@ public class FreeColDataFile {
         final String suffix = resourceFilename.substring(resourceFilename.lastIndexOf("."));
         final String completeRegex = Pattern.quote(prefix) + regex + Pattern.quote(suffix);
         
-        final List<Path> paths = Files.list(filePath.getParent())
-                .sorted()
-                .filter(p -> p.getFileName().toString().matches(completeRegex) && (!findVariation || !p.equals(filePath)))
-                .collect(Collectors.toList());
-        
-        return paths;
+        try (Stream<Path> pathStream = Files.list(filePath.getParent())) {
+            return pathStream
+                    .sorted()
+                    .filter(p -> p.getFileName().toString().matches(completeRegex) && (!findVariation || !p.equals(filePath)))
+                    .collect(Collectors.toList());
+        }
     }
 
     /**
@@ -415,6 +438,19 @@ public class FreeColDataFile {
      */
     public static FileFilter getFileFilter(String extension) {
         String s = Messages.message("filter." + extension);
+        if (extension.equals("*")) {
+            return new FileFilter() {
+                @Override
+                public boolean accept(File f) {
+                    return true;
+                }
+                
+                @Override
+                public String getDescription() {
+                    return s;
+                }
+            };
+        }
         return new FileNameExtensionFilter(s, extension);
     }
 }

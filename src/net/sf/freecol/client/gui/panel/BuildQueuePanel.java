@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -19,6 +19,14 @@
 
 package net.sf.freecol.client.gui.panel;
 
+import static net.sf.freecol.common.util.CollectionUtils.any;
+import static net.sf.freecol.common.util.CollectionUtils.find;
+import static net.sf.freecol.common.util.CollectionUtils.first;
+import static net.sf.freecol.common.util.CollectionUtils.forEachMapEntry;
+import static net.sf.freecol.common.util.CollectionUtils.matchKeyEquals;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+import static net.sf.freecol.common.util.StringUtils.join;
+
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Font;
@@ -31,8 +39,8 @@ import java.awt.event.ItemListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -63,7 +71,6 @@ import javax.swing.TransferHandler;
 import javax.swing.plaf.PanelUI;
 
 import net.miginfocom.swing.MigLayout;
-
 import net.sf.freecol.client.FreeColClient;
 import net.sf.freecol.client.gui.FontLibrary;
 import net.sf.freecol.client.gui.ImageLibrary;
@@ -85,8 +92,6 @@ import net.sf.freecol.common.model.StringTemplate;
 import net.sf.freecol.common.model.Turn;
 import net.sf.freecol.common.model.UnitType;
 import net.sf.freecol.common.option.GameOptions;
-import static net.sf.freecol.common.util.CollectionUtils.*;
-import static net.sf.freecol.common.util.StringUtils.*;
 
 
 /**
@@ -170,17 +175,6 @@ public class BuildQueuePanel extends FreeColPanel implements ItemListener {
             public BuildablesTransferable(List<IndexedBuildable> indexedBuildables) {
                 this.indexedBuildables = indexedBuildables;
             }
-
-
-            /**
-             * Get the build queue from the {@code Transferable}.
-             *
-             * @return The build queue.
-             */
-            public List<IndexedBuildable> getBuildables() {
-                return this.indexedBuildables;
-            }
-
 
             // Interface Transferable
 
@@ -267,8 +261,7 @@ public class BuildQueuePanel extends FreeColPanel implements ItemListener {
                 if (target != bql) {
                     // Dragging out of build queue => just remove the item.
                     // updateAllLists takes care of the rest.
-                    DefaultListModel sourceModel
-                        = (DefaultListModel)source.getModel();
+                    DefaultListModel<?> sourceModel = (DefaultListModel<?>) source.getModel();
                     for (Object obj : queue) {
                         sourceModel.removeElement(obj);
                     }
@@ -449,7 +442,7 @@ public class BuildQueuePanel extends FreeColPanel implements ItemListener {
     private class DefaultBuildQueueCellRenderer
         implements ListCellRenderer<BuildableType> {
 
-        private final Dimension buildingDimension = new Dimension(-1, 48);
+        private final Dimension buildingDimension = new Dimension(100, 48);
 
 
         public DefaultBuildQueueCellRenderer() {}
@@ -470,9 +463,9 @@ public class BuildQueuePanel extends FreeColPanel implements ItemListener {
             if (isSelected) {
                 panel.setUI((PanelUI)FreeColSelectedPanelUI.createUI(panel));
             }
-
-            JLabel imageLabel = new JLabel(new ImageIcon(getImageLibrary()
-                    .getBuildableTypeImage(value, buildingDimension)));
+            
+            JLabel imageLabel = new JLabel(new ImageIcon(getImageLibrary().getSmallBuildableTypeImageWithWithSize(value, colony.getOwner(), buildingDimension)));
+            
             JLabel nameLabel = new JLabel(Messages.getName(value));
             String reason = lockReasons.get(value);
             panel.add(imageLabel, "span 1 2");
@@ -552,8 +545,8 @@ public class BuildQueuePanel extends FreeColPanel implements ItemListener {
      */
     public BuildQueuePanel(FreeColClient freeColClient, Colony colony) {
         super(freeColClient, null,
-              new MigLayout("wrap 3", "[260:][390:, fill][260:]",
-                            "[][][300:400:][]"));
+              new MigLayout("fill, wrap 3", "[150:260:][fill][150:260:]",
+                            "[][][150:400:, growprio 150,shrinkprio 50][]"));
 
         this.colony = colony;
         this.featureContainer = new FeatureContainer();
@@ -589,7 +582,7 @@ public class BuildQueuePanel extends FreeColPanel implements ItemListener {
             };
 
         // Create Font choice
-        Font fontSubHead = FontLibrary.getUnscaledFont("normal-bold-smaller");
+        Font fontSubHead = FontLibrary.getScaledFont("normal-bold-smaller");
         
         // Create the components
         JLabel header
@@ -687,6 +680,13 @@ public class BuildQueuePanel extends FreeColPanel implements ItemListener {
         add(this.compactBox);
         add(this.showAllBox);
         add(okButton, "tag ok");
+        
+        setEscapeAction(new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent ae) {
+                okButton.doClick();
+            }
+        });
 
         setSize(getPreferredSize());
     }
@@ -1030,6 +1030,7 @@ public class BuildQueuePanel extends FreeColPanel implements ItemListener {
             }
         }
         getGUI().removeComponent(this);
+        getGUI().refreshTile(colony.getTile()); // Update the "modern" colony label.
     }
 
 

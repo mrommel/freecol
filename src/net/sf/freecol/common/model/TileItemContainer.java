@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -404,6 +404,15 @@ public class TileItemContainer extends FreeColGameObject {
                 ti -> ti.getProductionModifiers(goodsType, unitType));
         }
     }
+    
+    public Stream<Modifier> getProductionModifiersWithoutResource(GoodsType goodsType,
+            UnitType unitType) {
+        synchronized (tileItems) {
+            return tileItems.stream()
+                    .filter(ti -> !(ti instanceof Resource))
+                    .flatMap(ti -> ti.getProductionModifiers(goodsType, unitType));
+        }
+    }
 
     /**
      * Does this container contain an item that allows the tile to
@@ -474,8 +483,10 @@ public class TileItemContainer extends FreeColGameObject {
                     || improvement.getType().isNatural()) {
                     TileImprovementType type
                         = spec.getTileImprovementType(improvement.getType().getId());
-                    result.add(new TileImprovement(game, tile, type,
-                                                   improvement.getStyle()));
+                    final TileImprovement tileImprovement = new TileImprovement(game, tile, type,
+                                                   improvement.getStyle());
+                    tileImprovement.setMagnitude(improvement.getMagnitude());
+                    result.add(tileImprovement);
                 }
             } else {
                 logger.warning("Bogus tile item: " + item.getId());

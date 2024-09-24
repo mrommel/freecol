@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -20,7 +20,7 @@
 package net.sf.freecol.client.gui.action;
 
 import java.util.logging.Logger;
-
+import java.util.stream.Collectors;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -30,6 +30,7 @@ import net.sf.freecol.client.control.InGameController;
 import net.sf.freecol.client.gui.action.ColopediaAction.PanelType;
 import net.sf.freecol.client.gui.action.DisplayTileTextAction.DisplayText;
 import net.sf.freecol.client.gui.panel.UnitButton;
+import net.sf.freecol.common.model.Ability;
 import net.sf.freecol.common.model.Direction;
 import net.sf.freecol.common.model.Specification;
 import net.sf.freecol.common.model.TileImprovementType;
@@ -104,6 +105,7 @@ public class ActionManager extends OptionGroup {
         add(new DisbandUnitAction(freeColClient));
         add(new DisplayBordersAction(freeColClient));
         add(new DisplayGridAction(freeColClient));
+        add(new DisplayFogOfWarAction(freeColClient));
         for (DisplayText type : DisplayText.values()) {
             add(new DisplayTileTextAction(freeColClient, type));
         }
@@ -117,6 +119,8 @@ public class ActionManager extends OptionGroup {
         add(new LoadAction(freeColClient));
         add(new MapControlsAction(freeColClient));
         add(new MapEditorAction(freeColClient));
+        add(new MapEditorToolboxPanelAction(freeColClient));
+        add(new MapEditorTransformPanelAction(freeColClient));
         add(new MiniMapToggleViewAction(freeColClient));
         add(new MiniMapToggleViewAction(freeColClient, true));
         add(new MiniMapToggleFogOfWarAction(freeColClient));
@@ -135,6 +139,7 @@ public class ActionManager extends OptionGroup {
         add(new PreferencesAction(freeColClient));
         add(new SaveAndQuitAction(freeColClient));
         add(new QuitAction(freeColClient));
+        add(new AttackRangedAction(freeColClient));
         add(new ReconnectAction(freeColClient));
         add(new RenameAction(freeColClient));
         add(new ReportCargoAction(freeColClient));
@@ -182,6 +187,11 @@ public class ActionManager extends OptionGroup {
      */
     public void addSpecificationActions(Specification spec) {
         // Initialize ImprovementActions
+        for (Option<?> o : new ArrayList<>(getOptions())) {
+            if (o instanceof ImprovementAction) {
+                remove(o.getId());
+            }
+        }
         for (TileImprovementType type : spec.getTileImprovementTypeList()) {
             if (!type.isNatural()) {
                 add(new ImprovementAction(freeColClient, type));
@@ -201,6 +211,17 @@ public class ActionManager extends OptionGroup {
         return (hasOption(id, FreeColAction.class))
             ? getOption(id, FreeColAction.class)
             : null;
+    }
+    
+    /***
+     * Gets all registered {@code FreeColAction}s.
+     * @return The list of all actions.
+     */
+    public List<FreeColAction> getFreeColActions() {
+        return getOptions().stream()
+                .filter(o -> o instanceof FreeColAction)
+                .map(o -> (FreeColAction) o)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -235,6 +256,9 @@ public class ActionManager extends OptionGroup {
      */
     public List<UnitButton> makeUnitActionButtons(final Specification spec) {
         List<UnitButton> ret = new ArrayList<>();
+        if (spec == null || spec.hasAbility(Ability.HITPOINTS_COMBAT_MODEL)) {
+            ret.add(new UnitButton(this, AttackRangedAction.id));
+        }
         ret.add(new UnitButton(this, WaitAction.id));
         ret.add(new UnitButton(this, SkipUnitAction.id));
         ret.add(new UnitButton(this, SentryAction.id));
@@ -252,5 +276,13 @@ public class ActionManager extends OptionGroup {
         ret.add(new UnitButton(this, BuildColonyAction.id));
         ret.add(new UnitButton(this, DisbandUnitAction.id));
         return ret;
+    }
+    
+    public void refreshResources() {
+        for (Option<?> option : getOptions() ){
+            if (option instanceof FreeColAction) {
+                ((FreeColAction) option).updateRegisteredImageIcons();
+            }
+        }
     }
 }

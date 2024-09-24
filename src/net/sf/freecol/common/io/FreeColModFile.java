@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -33,8 +33,11 @@ import javax.xml.stream.XMLStreamException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import net.sf.freecol.common.FreeColUserMessageException;
 import net.sf.freecol.common.ObjectWithId;
+import net.sf.freecol.common.i18n.Messages;
 import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.StringTemplate;
 
 
 /**
@@ -84,6 +87,20 @@ public class FreeColModFile extends FreeColDataFile implements ObjectWithId {
         }
         return null;
     }
+    
+    /**
+     * Checks if there is a specification included in this mod.
+     * 
+     * @return {@code true} if the "specification.xml" file exists
+     *      and can be opened.
+     */
+    public boolean hasSpecification() {
+        try (InputStream is = getSpecificationInputStream()) {
+            return is != null;
+        } catch (IOException e) {
+            return false;
+        }
+    }
 
     /**
      * Gets the Specification.
@@ -96,6 +113,14 @@ public class FreeColModFile extends FreeColDataFile implements ObjectWithId {
                                                    XMLStreamException {
         try (InputStream si = getSpecificationInputStream()) {
             return (si == null) ? null : new Specification(si);
+        } catch (FreeColUserMessageException e) {
+            throw e;
+        } catch (RuntimeException rte) {
+            logger.log(Level.WARNING, "Parse error while reading specification " + getId(), rte);
+            throw new FreeColUserMessageException(
+                StringTemplate.template("error.mod").add("%id%", getId()).add("%name%", Messages.getName("mod." + getId())),
+                rte
+            );
         }
     }
 

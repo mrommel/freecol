@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -36,9 +36,9 @@ public class ScrollThread extends Thread {
 
     private static final Logger logger = Logger.getLogger(ScrollThread.class.getName());
 
-    /** Delay between scroll steps. */
-    private static final int SCROLL_DELAY = 100; // ms
-
+    /** Delay between scroll steps in ms. */
+    private static final int SCROLL_DELAY = 50;
+    
     /** The enclosing client. */
     private final FreeColClient freeColClient;
 
@@ -57,6 +57,7 @@ public class ScrollThread extends Thread {
         super(FreeCol.CLIENT_THREAD + "Mouse scroller");
         this.freeColClient = freeColClient;
     }
+    
 
     /**
      * Sets the direction in which this ScrollThread will scroll.
@@ -84,41 +85,47 @@ public class ScrollThread extends Thread {
     @Override
     public void run() {
         final GUI gui = this.freeColClient.getGUI();
+        
+        normalScrolling(gui);
+
+        gui.resetScrollSpeed();
+    }
+
+    
+    private void normalScrolling(final GUI gui) {
         while (true) {
             if (isAborted()) {
-                return;
+                break;
             }
             final Direction d = this.direction;
             if (d == null) {
                 abort();
-                return;
+                break;
             }
             final long start = System.currentTimeMillis();
             try {
                 SwingUtilities.invokeAndWait(() -> {
-                    if (!gui.scrollMap(d)) {
+                    if (!gui.scrollMap(d, true)) {
                         abort();
+                        return;
                     }
                 });
-            } catch (InterruptedException e) {
-                abort();
-                return;
             } catch (Exception ex) {
                 logger.log(Level.WARNING, "Exception while scrolling", ex);
                 abort();
-                return;
+                break;
             }
 
             if (isAborted()) {
-                return;
+                break;
             }
 
             try {
                 final long time = System.currentTimeMillis() - start;
-                sleep(Math.max(5, SCROLL_DELAY - time));
+                sleep(Math.max(2, SCROLL_DELAY - time));
             } catch (InterruptedException e) {
                 abort();
-                return;
+                break;
             }
         }
     }

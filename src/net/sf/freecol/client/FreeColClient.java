@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -23,6 +23,7 @@ import java.awt.Dimension;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
@@ -47,7 +48,6 @@ import net.sf.freecol.common.debug.FreeColDebugger;
 import net.sf.freecol.common.i18n.Messages;
 import net.sf.freecol.common.io.FreeColDataFile;
 import net.sf.freecol.common.io.FreeColDirectories;
-import net.sf.freecol.common.io.FreeColModFile;
 import net.sf.freecol.common.io.FreeColSavegameFile;
 import net.sf.freecol.common.io.FreeColTcFile;
 import net.sf.freecol.common.model.Game;
@@ -58,6 +58,7 @@ import net.sf.freecol.common.model.StringTemplate;
 import net.sf.freecol.common.model.Unit;
 import net.sf.freecol.common.networking.MessageHandler;
 import net.sf.freecol.common.networking.ServerAPI;
+import net.sf.freecol.common.resources.ImageResource;
 import net.sf.freecol.common.resources.ResourceManager;
 import net.sf.freecol.server.FreeColServer;
 import net.sf.freecol.server.FreeColServer.ServerState;
@@ -71,6 +72,9 @@ public final class FreeColClient {
 
     private static final Logger logger = Logger.getLogger(FreeColClient.class.getName());
 
+    @SuppressWarnings("unused")
+    private byte[] memoryToBeFreedOnOutOfMemory = new byte[10 * 1024 * 1024];
+    
     private final ConnectController connectController;
 
     private final PreGameController preGameController;
@@ -135,8 +139,8 @@ public final class FreeColClient {
      * Creates a new {@code FreeColClient}.  Creates the control
      * objects.
      *
+     * @param splashScreen An optional splash screen to display.
      * @param fontName An optional override of the main font.
-     * @param scale The scale factor for gui elements.
      * @param windowSize An optional window size.
      * @param userMsg An optional message key to be displayed early.
      * @param sound True if sounds should be played
@@ -167,6 +171,7 @@ public final class FreeColClient {
         if (FreeCol.getHeadless() && savedGame == null && spec == null) {
             FreeCol.fatal(logger, Messages.message("client.headlessRequires"));
         }
+        
         mapEditor = false;
 
         // Look for base data directory and get base resources loaded.
@@ -210,10 +215,10 @@ public final class FreeColClient {
         // Not so easy, since the ActionManager also creates tile
         // improvement actions, which depend on the specification.
         // However, this step could probably be delayed.
-        ResourceManager.addMapping("base", baseData.getResourceMapping());
+        ResourceManager.setBaseData(baseData);
         
-        FreeColTcFile tcData = FreeColTcFile.getFreeColTcFile("classic");
-        ResourceManager.addMapping("tc", tcData.getResourceMapping());
+        final FreeColTcFile tcData = FreeColTcFile.getFreeColTcFile(FreeCol.getTc());
+        ResourceManager.setTcData(tcData);
 
         actionManager = new ActionManager(this);
         actionManager.initializeActions(inGameController, connectController);
@@ -224,9 +229,10 @@ public final class FreeColClient {
         this.clientOptions.fixClientOptions();
 
         // Reset the mod resources as a result of the client option update.
-        for (FreeColModFile f : this.clientOptions.getActiveMods()) {
-            ResourceManager.addMapping("mod " + f.getId(),
-                                       f.getResourceMapping());
+        ResourceManager.setMods(this.clientOptions.getActiveMods());
+        
+        if (this.clientOptions.getRange(ClientOptions.GRAPHICS_QUALITY) == ClientOptions.GRAPHICS_QUALITY_LOWEST) {
+            ImageResource.forceLowestQuality(true);
         }
         
         /*
@@ -248,6 +254,8 @@ public final class FreeColClient {
         
         // Initialize Sound (depends on client options)
         this.soundController = new SoundController(this, sound);
+        
+        overrideDefaultUncaughtExceptionHandler();
         
         /*
          * Please do NOT move preloading before mods are loaded -- as that
@@ -380,7 +388,7 @@ public final class FreeColClient {
         if (userOptions != null && userOptions.exists()) {
             logger.info("Merge client options from user options file: "
                 + userOptions.getPath());
-            clop.merge(userOptions);
+            clop.load(userOptions);
         }
 
         //logger.info("Final client options: " + clop.toString());
@@ -694,7 +702,14 @@ public final class FreeColClient {
      * @param specification The {@code Specification} to use.
      */
     public void addSpecificationActions(Specification specification) {
-        actionManager.addSpecificationActions(specification);
+        SwingUtilities.invokeLater(() -> {
+            actionManager.addSpecificationActions(specification);
+            // XXX: The actions are loaded asynchronously without a callback.
+            SwingUtilities.invokeLater(() -> {
+                getGUI().resetMenuBar();
+                getGUI().resetMapControls();
+            });
+        });
     }
 
 
@@ -801,10 +816,9 @@ public final class FreeColClient {
      */
     public boolean unblockServer(int port) {
         final FreeColServer freeColServer = getFreeColServer();
-        if (freeColServer != null
-            && freeColServer.getServer().getPort() == port) {
-            if (!getGUI().confirm("stopServer.text", "stopServer.yes",
-                                  "stopServer.no")) return false;
+        if (freeColServer != null ) {
+            if (!getGUI().modalConfirmDialog("stopServer.text", "stopServer.yes",
+                                  "stopServer.no", true)) return false;
             stopServer();
         }
         return true;
@@ -829,21 +843,24 @@ public final class FreeColClient {
      * @param publicServer If true, add to the meta-server.
      * @param singlePlayer True if this is a single player game.
      * @param spec The {@code Specification} to use in this game.
-     * @param port The TCP port to use for the public socket.
+     * @param address The address to use for the public socket.
+     * @param port The TCP port to use for the public socket. If null, try
+     *      ports until 
      * @return A new {@code FreeColServer} or null on error.
      */
     public FreeColServer startServer(boolean publicServer,
                                      boolean singlePlayer, Specification spec,
+                                     InetAddress address,
                                      int port) {
         final FreeColServer fcs;
         try {
-            fcs = new FreeColServer(publicServer, singlePlayer, spec,
-                                    port, null);
+            fcs = new FreeColServer(publicServer, singlePlayer, spec, address, port, null);
+            if (!fcs.registerWithMetaServer()) {
+                fcs.shutdown();
+                return failToMain(null, "server.noRouteToServer");
+            }
         } catch (IOException ioe) {
             return failToMain(ioe, "server.initialize");
-        }
-        if (publicServer && !fcs.getPublicServer()) {
-            return failToMain(null, "server.noRouteToServer");
         }
 
         setFreeColServer(fcs);
@@ -857,13 +874,15 @@ public final class FreeColClient {
      * @param publicServer If true, add to the meta-server.
      * @param singlePlayer True if this is a single player game.
      * @param saveFile The saved game {@code File}.
+     * @param address The TCP address to use for the public socket.
      * @param port The TCP port to use for the public socket.
      * @param name An optional name for the server.
      * @return A new {@code FreeColServer}, or null on error.
      */
     public FreeColServer startServer(boolean publicServer,
                                      boolean singlePlayer,
-                                     File saveFile, int port, String name) {
+                                     File saveFile, InetAddress address,
+                                     int port, String name) {
         final FreeColSavegameFile fsg;
         try {
             fsg = new FreeColSavegameFile(saveFile);
@@ -874,7 +893,11 @@ public final class FreeColClient {
         }
         final FreeColServer fcs;
         try {
-            fcs = new FreeColServer(fsg, (Specification)null, port, name);
+            fcs = new FreeColServer(fsg, (Specification)null, address, port, name);
+            fcs.setPublicServer(publicServer);
+            if (!fcs.registerWithMetaServer()) {
+                return failToMain(null, "server.noRouteToServer");
+            }
         } catch (XMLStreamException xse) {
             return failToMain(xse, FreeCol.badFile("error.couldNotLoad", saveFile));
         } catch (Exception ex) {
@@ -884,7 +907,7 @@ public final class FreeColClient {
         setFreeColServer(fcs);
         setSinglePlayer(singlePlayer);
         this.inGameController.setGameConnected();
-        ResourceManager.addMapping("game", fsg.getResourceMapping());
+        ResourceManager.setSavegameFile(fsg);
         return fcs;
     }
     
@@ -958,7 +981,7 @@ public final class FreeColClient {
      * Quits the application.
      */
     public void askToQuit() {
-        if (gui.confirm("quitDialog.areYouSure.text", "ok", "cancel")) {
+        if (gui.modalConfirmDialog("quitDialog.areYouSure.text", "ok", "cancel", false)) {
             Player player = getMyPlayer();
             if (player == null) { // If no player, must be already logged out
                 quit();
@@ -973,11 +996,11 @@ public final class FreeColClient {
      * Retire from the game.
      */
     public void retire() {
-        if (gui.confirm("retireDialog.areYouSure.text", "ok", "cancel")) {
+        if (gui.modalConfirmDialog("retireDialog.areYouSure.text", "ok", "cancel", false)) {
             final Player player = getMyPlayer();
             player.changePlayerType(Player.PlayerType.RETIRED);
-            getInGameController().highScore(null);
-            askServer().retire();
+            final boolean highScore = askServer().retire();
+            getInGameController().highScore(highScore);
         }
     }
 
@@ -1004,5 +1027,32 @@ public final class FreeColClient {
             FreeCol.fatal(logger, "Failed to shutdown gui: " + e);
         }
         FreeCol.quit(0);
+    }
+    
+    private void overrideDefaultUncaughtExceptionHandler() {
+        // This overrides the handler in FreeCol:
+        Thread.setDefaultUncaughtExceptionHandler((Thread thread, Throwable e) -> {
+            // Free enough space to ensure we can perform the next operations.
+            if (e instanceof Error) {
+                memoryToBeFreedOnOutOfMemory = null;
+                gui.emergencyPurge();
+            }
+            
+            final boolean seriousError = (e instanceof Error);
+            try {
+                logger.log(Level.WARNING, "Uncaught exception from thread: " + thread, e);
+                
+                if (seriousError) {
+                    gui.showErrorPanel(Messages.message("error.seriousError"), () -> {
+                        System.exit(1);
+                    });
+                }
+            } catch (Throwable t) {
+                if (seriousError) {
+                    t.printStackTrace();
+                    System.exit(1);
+                }
+            }
+        });
     }
 }

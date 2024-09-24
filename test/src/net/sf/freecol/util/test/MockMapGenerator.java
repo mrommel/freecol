@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -52,7 +52,7 @@ public class MockMapGenerator implements MapGenerator {
     /**
      * {@inheritDoc}
      */
-    public Map generateMap(Game game, Map importMap, LogBuilder lb) {
+    public Map generateMap(Game game, Map importMap, boolean generateEuropeanPlayerUnits, LogBuilder lb) {
         // For all map descendents in the old game, move them to the
         // new game.
         Game oldGame = map.getGame();

@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -51,7 +51,7 @@ public final class ReportReligiousPanel extends ReportPanel {
     public ReportReligiousPanel(FreeColClient freeColClient) {
         super(freeColClient, "reportReligionAction");
 
-        final Font font = FontLibrary.getUnscaledFont("normal-bold-smaller");
+        final Font font = FontLibrary.getScaledFont("normal-bold-smaller");
         final Player player = getMyPlayer();
         final Specification spec = getSpecification();
 

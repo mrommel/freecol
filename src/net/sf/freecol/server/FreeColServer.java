@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -242,12 +242,13 @@ public final class FreeColServer {
      * saved-game constructors.
      *
      * @param name An optional name for the server.
+     * @param address The address to use for the public socket.
      * @param port The TCP port to use for the public socket.
      * @exception IOException on failure to open the port.
      */
-    private FreeColServer(String name, int port) throws IOException {
+    private FreeColServer(String name, InetAddress address, int port) throws IOException {
         this.name = name;
-        this.server = createServer(port); // Throws IOException
+        this.server = createServer(address, port); // Throws IOException
         this.server.start();
         this.userConnectionHandler = new UserConnectionHandler(this);
         this.preGameController = new PreGameController(this);
@@ -261,18 +262,24 @@ public final class FreeColServer {
      * If the port is specified, just try once.
      * If the port is unspecified (negative), try multiple times.
      *
+     * @param address The address to use for the public socket.
      * @param firstPort The port to start trying to connect at.
      * @return A started {@code Server}.
      * @exception IOException on failure to open the port.
      */
-    private Server createServer(int firstPort) throws IOException {
-        List<InetAddress> addresses = new ArrayList<>();
-        try {
-            addresses.add(InetAddress.getLocalHost());
-        } catch (UnknownHostException uhe) {
-            logger.warning("Could not resolve local host name");
+    private Server createServer(InetAddress address, int firstPort) throws IOException {
+        final List<InetAddress> addresses = new ArrayList<>();
+        if (address == null) {
+            addresses.add(InetAddress.getLoopbackAddress());
+            try {
+                addresses.add(InetAddress.getLocalHost());
+            } catch (UnknownHostException uhe) {
+                logger.warning("Could not resolve local host name");
+            }
+        } else {
+            addresses.add(address);
         }
-        addresses.add(InetAddress.getLoopbackAddress());
+        
         int tryMax = 1;
         if (firstPort < 0) {
             firstPort = FreeCol.getServerPort();
@@ -303,22 +310,22 @@ public final class FreeColServer {
      * @param publicServer If true, add to the meta-server.
      * @param singlePlayer True if this is a single player game.
      * @param specification The {@code Specification} to use in this game.
+     * @param address The address to use for the public socket.
      * @param port The TCP port to use for the public socket.
      * @param name An optional name for the server.
      * @exception IOException If the public socket cannot be created.
      */
     public FreeColServer(boolean publicServer, boolean singlePlayer,
-                         Specification specification, int port, String name)
+                         Specification specification, InetAddress address, int port, String name)
         throws IOException {
-        this(name, port);
+        this(name, address, port);
 
         this.setPublicServer(publicServer);
         this.singlePlayer = singlePlayer;
-        this.random = new Random(FreeColSeed.getFreeColSeed());
+        this.random = new Random();
         this.serverGame = new ServerGame(specification, random);
         this.inGameController.setRandom(this.random);
         this.mapGenerator = new SimpleMapGenerator(this.random);
-        registerWithMetaServer();
     }
 
     /**
@@ -330,16 +337,17 @@ public final class FreeColServer {
      *
      * @param savegame The file where the game data is located.
      * @param specification An optional {@code Specification} to use.
+     * @param address The address to use for the public socket.
      * @param port The TCP port to use for the public socket.
      * @param name An optional name for the server.
      * @exception IOException If save game can not be found.
      * @exception FreeColException If the savegame could not be loaded.
      * @exception XMLStreamException If the server comms fail.
      */
-    public FreeColServer(final FreeColSavegameFile savegame, 
-                         Specification specification, int port, String name)
+    public FreeColServer(final FreeColSavegameFile savegame, Specification specification,
+            InetAddress address, int port, String name)
         throws FreeColException, IOException, XMLStreamException {
-        this(name, port);
+        this(name, address, port);
 
         this.serverGame = loadGame(savegame, specification);
         // NationOptions will be read from the saved game.
@@ -353,7 +361,6 @@ public final class FreeColServer {
         this.inGameController.setRandom(this.random);
             
         this.mapGenerator = null;
-        registerWithMetaServer();
     }
 
 
@@ -650,8 +657,8 @@ public final class FreeColServer {
     public void addNewUserConnection(Socket socket)
         throws FreeColException, IOException, XMLStreamException {
         final String name = socket.getInetAddress() + ":" + socket.getPort();
-        Connection c = new Connection(socket, FreeCol.SERVER_THREAD + name)
-            .setMessageHandler(this.userConnectionHandler);
+        @SuppressWarnings("resource")
+        final Connection c = new Connection(socket, FreeCol.SERVER_THREAD + name).setMessageHandler(this.userConnectionHandler);
         getServer().addConnection(c);
         // Short delay here improves reliability
         c.startReceiving();
@@ -1193,7 +1200,7 @@ public final class FreeColServer {
 
         // Create the map.
         if (serverGame.getMap() == null) {
-            generateMap();
+            generateMap(true);
         
             // Initial stances and randomizations for all players.
             spec.generateDynamicOptions();
@@ -1243,9 +1250,10 @@ public final class FreeColServer {
     /**
      * Generate a new map in this server/game.
      *
+     * @param generateEuropeanPlayerUnits If {@code true}, then the european player units are generated.
      * @return The {@code Map} that was created.
      */
-    public Map generateMap() {
+    public Map generateMap(boolean generateEuropeanPlayerUnits) {
         ServerGame serverGame = getGame();
         LogBuilder lb = new LogBuilder(256);
         File importFile = serverGame.getMapGeneratorOptions()
@@ -1260,7 +1268,7 @@ public final class FreeColServer {
                     + importFile.getName(), ex);
             }
         }
-        Map ret = getMapGenerator().generateMap(serverGame, importMap, lb);
+        Map ret = getMapGenerator().generateMap(serverGame, importMap, generateEuropeanPlayerUnits, lb);
         lb.shrink("\n");
         lb.log(logger, Level.FINER);
         return ret;
@@ -1368,9 +1376,8 @@ public final class FreeColServer {
      * @return True if the meta-server was updated.
      */
     public synchronized boolean registerWithMetaServer() {
-        if (!this.publicServer) return false;
-        boolean ret = MetaServerUtils.registerServer(getServerInfo());
-        return ret;
+        if (!this.publicServer) return true;
+        return MetaServerUtils.registerServer(getServerInfo());
     }
 
     /**

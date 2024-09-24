@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -44,12 +44,13 @@ public class FAFileResource extends Resource {
     /**
      * Do not use directly.
      *
+     * @param cachingKey The caching key.
      * @param resourceLocator The {@code URI} used when loading this
      *     resource.
      * @exception IOException if FAFile can not be opened.
      */
-    public FAFileResource(String primaryKey, URI resourceLocator) throws IOException {
-        super(primaryKey, resourceLocator);
+    public FAFileResource(String cachingKey, URI resourceLocator) throws IOException {
+        super(cachingKey, resourceLocator);
         URL url = resourceLocator.toURL();
         FAFile = new FAFile(url.openStream());
     }

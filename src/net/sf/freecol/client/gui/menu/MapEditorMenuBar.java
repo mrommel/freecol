@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -33,6 +33,8 @@ import net.sf.freecol.client.gui.action.DisplayGridAction;
 import net.sf.freecol.client.gui.action.DisplayTileTextAction;
 import net.sf.freecol.client.gui.action.DisplayTileTextAction.DisplayText;
 import net.sf.freecol.client.gui.action.MapControlsAction;
+import net.sf.freecol.client.gui.action.MapEditorToolboxPanelAction;
+import net.sf.freecol.client.gui.action.MapEditorTransformPanelAction;
 import net.sf.freecol.client.gui.action.NewAction;
 import net.sf.freecol.client.gui.action.NewEmptyMapAction;
 import net.sf.freecol.client.gui.action.OpenAction;
@@ -45,6 +47,7 @@ import net.sf.freecol.client.gui.action.StartMapAction;
 import net.sf.freecol.client.gui.action.ZoomInAction;
 import net.sf.freecol.client.gui.action.ZoomOutAction;
 import net.sf.freecol.client.gui.panel.Utility;
+import net.sf.freecol.common.debug.FreeColDebugger;
 
 
 /**
@@ -71,10 +74,7 @@ public class MapEditorMenuBar extends FreeColMenuBar {
      * @param listener An optional mouse motion listener.
      */
     public MapEditorMenuBar(final FreeColClient freeColClient, MouseMotionListener listener) {
-        super(freeColClient);
-
-        // Add a mouse listener so that autoscrolling can happen in this menubar
-        this.addMouseMotionListener(listener);
+        super(freeColClient, listener);
         reset();
     }
 
@@ -91,6 +91,10 @@ public class MapEditorMenuBar extends FreeColMenuBar {
         buildToolsMenu();
         buildColopediaMenu();
 
+        if (FreeColDebugger.isInDebugMode(FreeColDebugger.DebugMode.MENUS)) {
+            add(new DebugMenu(this.freeColClient));
+        }
+        
         update();
     }
 
@@ -128,6 +132,8 @@ public class MapEditorMenuBar extends FreeColMenuBar {
         menu.setMnemonic(KeyEvent.VK_V);
 
         menu.add(getCheckBoxMenuItem(MapControlsAction.id));
+        menu.add(getCheckBoxMenuItem(MapEditorToolboxPanelAction.id));
+        menu.add(getCheckBoxMenuItem(MapEditorTransformPanelAction.id));
         menu.add(getCheckBoxMenuItem(DisplayGridAction.id));
         menu.add(getCheckBoxMenuItem(ChangeWindowedModeAction.id));
 

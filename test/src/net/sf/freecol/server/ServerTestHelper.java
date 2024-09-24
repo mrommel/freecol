@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2021  The FreeCol Team
+ *  Copyright (C) 2002-2024  The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -96,7 +96,7 @@ public final class ServerTestHelper {
         try {
             // FIXME: Pass tc
             server = new FreeColServer(publicServer, singlePlayer,
-                                       spec, port, name);
+                                       spec, null, port, name);
         } catch (IOException ex) {
             fail(ex.getMessage());
         }
@@ -118,7 +118,7 @@ public final class ServerTestHelper {
         stopServer();
         try {
             server = new FreeColServer(new FreeColSavegameFile(file), 
-                                       null, port, name);
+                                       null, null, port, name);
         } catch (Exception e) {
             fail(e.getMessage());
         }

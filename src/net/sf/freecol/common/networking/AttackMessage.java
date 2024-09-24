@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -96,6 +96,10 @@ public class AttackMessage extends AttributeMessage {
             unit = serverPlayer.getOurFreeColGameObject(unitId, Unit.class);
         } catch (Exception e) {
             return serverPlayer.clientError(e.getMessage());
+        }
+        
+        if (unit.getMovesLeft() <= 0) {
+            return serverPlayer.clientError("No moves left.");
         }
 
         Tile tile;

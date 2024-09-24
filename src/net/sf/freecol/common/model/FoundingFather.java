@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -230,9 +230,6 @@ public class FoundingFather extends FreeColSpecObjectType {
 
 
     // Serialization
-
-    private static final String FROM_ID_TAG = "from-id";
-    private static final String TO_ID_TAG = "to-id";
     private static final String TYPE_TAG = "type";
     private static final String UNIT_TAG = "unit";
     private static final String WEIGHT_TAG = "weight";
@@ -286,18 +283,22 @@ public class FoundingFather extends FreeColSpecObjectType {
             weight[i] = xr.getAttribute(WEIGHT_TAG + (i + 1), 0);
         }
     }
+    
+    /**
+    * {@inheritDoc}
+    */
+    @Override
+    protected void clearContainers(FreeColXMLReader xr) throws XMLStreamException {
+        super.clearContainers(xr);
+        events = null;
+        units = null;
+    }
 
     /**
      * {@inheritDoc}
      */
     @Override
     protected void readChildren(FreeColXMLReader xr) throws XMLStreamException {
-        // Clear containers.
-        if (xr.shouldClearContainers()) {
-            events = null;
-            units = null;
-        }
-        
         super.readChildren(xr);
     }
 

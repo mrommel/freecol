@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -25,7 +25,6 @@ import net.sf.freecol.common.model.Specification;
 import net.sf.freecol.common.model.Unit;
 import net.sf.freecol.common.model.UnitType;
 
-
 /**
  * This panel displays the Cargo Report.
  */
@@ -40,12 +39,11 @@ public final class ReportCargoPanel extends ReportUnitPanel {
         super(freeColClient, "reportCargoAction", false);
     }
 
-
     /**
      * {@inheritDoc}
      */
     protected boolean isReportable(Unit unit) {
-        return unit.isCarrier();
+        return unit.isCarrier() || unit.canCarryTreasure();
     }
 
     /**
@@ -53,10 +51,12 @@ public final class ReportCargoPanel extends ReportUnitPanel {
      */
     protected boolean isReportable(UnitType unitType, Role role) {
         return unitType.isAvailableTo(getMyPlayer())
-            && (unitType.canCarryUnits() || unitType.canCarryGoods())
-            && Specification.DEFAULT_ROLE_ID.equals(role.getId());
+                && (unitType.canCarryUnits()
+                        || unitType.canCarryGoods()
+                        || unitType.canCarryTreasure())
+                && Specification.DEFAULT_ROLE_ID.equals(role.getId());
     }
-        
+
     /**
      * {@inheritDoc}
      */

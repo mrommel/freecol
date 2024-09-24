@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -106,7 +106,6 @@ public class ServerColony extends Colony implements TurnTaker {
             colonyTiles.add(new ServerColonyTile(game, this, t));
         }
 
-        Building building;
         List<BuildingType> buildingTypes = spec.getBuildingTypeList();
         for (BuildingType buildingType : transform(buildingTypes, bt ->
                 bt.isAutomaticBuild() || isAutomaticBuild(bt))) {
@@ -685,6 +684,8 @@ public class ServerColony extends Colony implements TurnTaker {
         boolean newUnitBorn = false;
         GoodsContainer container = getGoodsContainer();
         container.saveState();
+        
+        invalidateCache();
 
         // Check for learning by experience
         for (WorkLocation wl : getCurrentWorkLocationsList()) {
@@ -708,6 +709,15 @@ public class ServerColony extends Colony implements TurnTaker {
                 }
             }
         }
+
+        // We are about to process build completions.  When we build
+        // something the production map will be recalculated, so we
+        // need to take a copy now so as to be able to apply the
+        // production from the previous turn, not the new production
+        // with the new buildable present.
+        // See BR#3261 where upgrading the carpenter's shop increases
+        // the lumber consumption.
+        TypeCountMap<GoodsType> productionMap = getProductionMap();
 
         // Check the build queues and build new stuff.  If a queue
         // does a build add it to the built list, so that we can
@@ -744,14 +754,8 @@ public class ServerColony extends Colony implements TurnTaker {
             }
         }
 
-        // Apply the accumulated production changes.
-        // Beware that if you try to build something requiring hammers
-        // and tools, as soon as one is updated in the colony the
-        // current production cache is invalidated, and the
-        // recalculated one will see the build as incomplete due to
-        // missing the goods just updated.
-        // Hence the need for a copy of the current production map.
-        TypeCountMap<GoodsType> productionMap = getProductionMap();
+        // Apply the accumulated production changes using the saved
+        // production map.
         for (GoodsType goodsType : productionMap.keySet()) {
             int net = productionMap.getCount(goodsType);
             int stored = getGoodsCount(goodsType);
@@ -906,6 +910,11 @@ public class ServerColony extends Colony implements TurnTaker {
             for (Unit teacher : building.getUnitList()) {
                 building.csCheckTeach(teacher, cs);
             }
+        }
+        
+        // Repair land units (only used if they have hitpoints).
+        for (Unit unit : transform(getTile().getUnits(), u -> !u.isNaval() && u.isDamaged())) {
+            ((ServerUnit) unit).csRepairUnit(cs);
         }
 
         // Try to update minimally.

@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -483,7 +483,7 @@ public final class Monarch extends FreeColGameObject implements Named {
         int turn = getGame().getTurn().getNumber();
         int oldTax = player.getTax();
         int adjust = Math.max(1, (6 - taxAdjustment) * 10); // 20-60
-        adjust = 1 + randomInt(logger, "Tax rise", random, 5 + turn/adjust);
+        adjust = 1 + randomInt(logger, "Tax rise", random, 3 + turn/adjust);
         return Math.min(oldTax + adjust, taxMaximum());
     }
 
@@ -852,9 +852,6 @@ public final class Monarch extends FreeColGameObject implements Named {
     private static final String INTERVENTION_FORCE_TAG = "interventionForce";
     private static final String PLAYER_TAG = "player";
     private static final String SUPPORT_SEA_TAG = "supportSea";
-    // @compat 0.11.1
-    private static final String NAME_TAG = "name";
-    // end @compat 0.11.1
     // @compat 0.11.5
     private static final String MERCENARY_FORCE_TAG = "mercenaryForce";
     // end @compat 0.11.5

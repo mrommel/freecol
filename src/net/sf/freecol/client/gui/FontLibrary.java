@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -20,8 +20,6 @@
 package net.sf.freecol.client.gui;
 
 import static net.sf.freecol.common.util.CollectionUtils.makeUnmodifiableMap;
-import static net.sf.freecol.common.util.StringUtils.downCase;
-import static net.sf.freecol.common.util.StringUtils.join;
 import static net.sf.freecol.common.util.StringUtils.upCase;
 
 import java.awt.Font;
@@ -41,6 +39,8 @@ public class FontLibrary {
 
     private static final Logger logger = Logger.getLogger(FontLibrary.class.getName());
 
+    public static final float DEFAULT_UNSCALED_MAIN_FONT_SIZE = 12f;
+    
     /** Default size, used for the main-font. */
     private static float mainFontSize = 12f;
 
@@ -87,16 +87,9 @@ public class FontLibrary {
     public static void setMainFontSize(float newMainFontSize) {
         mainFontSize = newMainFontSize;
     }
-
-    /**
-     * Convert a font size and scale factor to float.
-     *
-     * @param fontSize The font size expressed as a {@code Size}.
-     * @param scaleFactor A secondary scaling.
-     * @return The conversion result.
-     */
-    private static float getScaledSize(Size fontSize, float scaleFactor) {
-        return fontSize.forFont() * scaleFactor;
+    
+    public static float getMainFontSize() {
+        return mainFontSize;
     }
     
     /**
@@ -231,6 +224,42 @@ public class FontLibrary {
      * Beware the null return here.  Callers need to handle potential failure.
      *
      * @param spec The font specification.
+     * @return The {@code Font} found, or null if scaling fails.
+     */
+    public static Font getScaledFont(String spec) {
+        return getScaledFont(spec, null);
+    }
+    
+    /**
+     * Get a scaled font with a simple text specification.
+     *
+     * Beware the null return here.  Callers need to handle potential failure.
+     *
+     * @param spec The font specification.
+     * @param text Optional text that the font must be able to represent.
+     * @return The {@code Font} found, or null if scaling fails.
+     */
+    public static Font getScaledFont(String spec, String text) {
+        final float scaleFactor = getFontScaling(); 
+        return getScaledFont(spec, scaleFactor, text);
+    }
+
+    /**
+     * Gets the scaling factor for the main font.
+     * 
+     * @return A scaling factor that can be used when scaling resources
+     *      that should scale together with the font.
+     */
+    public static float getFontScaling() {
+        return mainFontSize / DEFAULT_UNSCALED_MAIN_FONT_SIZE;
+    }
+    
+    /**
+     * Get a scaled font with a simple text specification.
+     *
+     * Beware the null return here.  Callers need to handle potential failure.
+     *
+     * @param spec The font specification.
      * @param scale The font scale (in addition to that in the specification).
      * @param text Optional text that the font must be able to represent.
      * @return The {@code Font} found, or null if scaling fails.
@@ -238,10 +267,10 @@ public class FontLibrary {
     public static Font getScaledFont(String spec, float scale, String text) {
         String[] a = spec.split("-");
         if (a.length != 3) throw new RuntimeException("Bad font spec: " + spec);
-        Size size = Enum.valueOf(Size.class, upCase(a[2]));
-        Size newSize = size.scaled(scale);
-        if (newSize == null) return null;
-        String newSpec = join("-", a[0], a[1], downCase(newSize.toString()));
-        return getUnscaledFont(newSpec, text);
+        
+        final Font unscaledFont = getUnscaledFont(spec, text);
+        final Size size = Enum.valueOf(Size.class, upCase(a[2]));
+        final float fontSize = Math.round(size.forFont() * scale);
+        return unscaledFont.deriveFont(fontSize);
     }
 }

@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -229,6 +229,8 @@ public final class ResourceMapping {
     /**
      * Preload all resources in this mapping.
      *
+     * @param preloadController The {@code PreloadController} handling
+     *     this preload.
      * @return The number of resources loaded.
      */
     public int preload(PreloadController preloadController) {
@@ -290,6 +292,10 @@ public final class ResourceMapping {
             ret++;
         }
         return ret;
+    }
+    
+    public void clearCaches() {
+        imageResources.values().stream().forEach(r -> r.clean());
     }
     
     public interface PreloadController {

@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -18,6 +18,27 @@
  */
 
 package net.sf.freecol.server.model;
+
+import static net.sf.freecol.common.model.Constants.UNDEFINED;
+import static net.sf.freecol.common.util.CollectionUtils.alwaysTrue;
+import static net.sf.freecol.common.util.CollectionUtils.any;
+import static net.sf.freecol.common.util.CollectionUtils.count;
+import static net.sf.freecol.common.util.CollectionUtils.find;
+import static net.sf.freecol.common.util.CollectionUtils.first;
+import static net.sf.freecol.common.util.CollectionUtils.flatten;
+import static net.sf.freecol.common.util.CollectionUtils.forEach;
+import static net.sf.freecol.common.util.CollectionUtils.forEachMapEntry;
+import static net.sf.freecol.common.util.CollectionUtils.iterable;
+import static net.sf.freecol.common.util.CollectionUtils.matchKey;
+import static net.sf.freecol.common.util.CollectionUtils.matchKeyEquals;
+import static net.sf.freecol.common.util.CollectionUtils.min;
+import static net.sf.freecol.common.util.CollectionUtils.sum;
+import static net.sf.freecol.common.util.CollectionUtils.sumDouble;
+import static net.sf.freecol.common.util.CollectionUtils.toListNoNulls;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+import static net.sf.freecol.common.util.RandomUtils.getRandomMember;
+import static net.sf.freecol.common.util.RandomUtils.randomInt;
+import static net.sf.freecol.common.util.RandomUtils.randomShuffle;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -40,6 +61,7 @@ import java.util.stream.Stream;
 
 import javax.xml.stream.XMLStreamException;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.sf.freecol.FreeCol;
 import net.sf.freecol.common.FreeColException;
 import net.sf.freecol.common.debug.FreeColDebugger;
@@ -52,8 +74,9 @@ import net.sf.freecol.common.model.Building;
 import net.sf.freecol.common.model.BuildingType;
 import net.sf.freecol.common.model.Colony;
 import net.sf.freecol.common.model.CombatModel;
+import net.sf.freecol.common.model.CombatModel.CombatEffectType;
 import net.sf.freecol.common.model.CombatModel.CombatResult;
-import static net.sf.freecol.common.model.Constants.*;
+import net.sf.freecol.common.model.Constants.IndianDemandAction;
 import net.sf.freecol.common.model.DiplomaticTrade;
 import net.sf.freecol.common.model.DiplomaticTrade.TradeStatus;
 import net.sf.freecol.common.model.Disaster;
@@ -90,8 +113,8 @@ import net.sf.freecol.common.model.TradeRoute;
 import net.sf.freecol.common.model.Turn;
 import net.sf.freecol.common.model.Unit;
 import net.sf.freecol.common.model.UnitChangeType;
-import net.sf.freecol.common.model.UnitTypeChange;
 import net.sf.freecol.common.model.UnitType;
+import net.sf.freecol.common.model.UnitTypeChange;
 import net.sf.freecol.common.model.WorkLocation;
 import net.sf.freecol.common.model.pathfinding.GoalDeciders;
 import net.sf.freecol.common.networking.ChangeSet;
@@ -107,10 +130,6 @@ import net.sf.freecol.common.option.GameOptions;
 import net.sf.freecol.common.option.IntegerOption;
 import net.sf.freecol.common.util.LogBuilder;
 import net.sf.freecol.common.util.RandomChoice;
-import static net.sf.freecol.common.util.CollectionUtils.*;
-import static net.sf.freecol.common.util.RandomUtils.*;
-
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 
 /**
@@ -389,7 +408,8 @@ public class ServerPlayer extends Player implements TurnTaker {
                     min = max;
                     max = bad;
                 } else if (max == min) continue;
-                int add = randomInt(null, null, random, max - min);
+                int add = randomInt(logger, type.getId() + " initial price",
+                                    random, max - min);
                 if (add > 0) {
                     market.setInitialPrice(type, min + add);
                     market.update(type);
@@ -561,20 +581,39 @@ public class ServerPlayer extends Player implements TurnTaker {
         // Not defeated if holding settlements.
         if (hasSettlements()) return false;
 
-        // Not defeated if there is a non-zero navy and enough land units.
-        final int landREFUnitsRequired = 7; // FIXME: magic number
-        boolean naval = false;
+        int naval = 0;
         int land = 0;
         for (Unit u : getUnitSet()) {
-            if (u.isNaval()) naval = true; else {
-                if (u.hasAbility(Ability.REF_UNIT) && !u.isInEurope()) land++;
+            if (u.isNaval()) naval++; else {
+                land++;
             }
         }
-        if (naval && land >= landREFUnitsRequired) return false;
 
-        // Surrender if all rebels have a stronger land army
-        final double power = calculateStrength(false);
-        return all(getRebels(), r -> r.calculateStrength(false) > power);
+        // The REF is arrogant and overestimates its strength by a fudge factor
+        final double refLandPower = 1.5 * calculateStrength(false);
+        // Do not surrender if there is a rebel whose land army seems weaker
+        for (Player r : getRebels()) {
+            double rebelLandPower = r.calculateStrength(false);
+            if (rebelLandPower < refLandPower) return false;
+            logger.fine("REF in trouble wrt " + r.getName() + " ("
+                + refLandPower + " <= " + rebelLandPower + ")");
+        }
+
+        // OK, the situation is poor, but the REF hangs on if it has
+        // a minimal number of land and naval units
+        final int landREFUnitsRequired = 7; // FIXME: magic number
+        if (land < landREFUnitsRequired) {
+            logger.info("REF surrenders due to land army collapse ("
+                + land + " < " + landREFUnitsRequired + ")");
+            return true;
+        }
+        final int navalREFUnitsRequired = 2; // FIXME: magic number
+        if (naval < navalREFUnitsRequired) {
+            logger.info("REF surrenders due to lack of naval support ("
+                + naval + " < " + navalREFUnitsRequired + ")");
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -1248,7 +1287,35 @@ public class ServerPlayer extends Player implements TurnTaker {
                 : GoodsContainer.CARGO_SIZE;
             int incomeBeforeTaxes = market.getSalePrice(type, a);
             int incomeAfterTaxes = ((100 - tax) * incomeBeforeTaxes) / 100;
-            modifyGold(incomeAfterTaxes);
+            
+            if (isAI()) {
+                /*
+                 * TODO: The multiplier here should be a part of the difficulty setting.
+                 * 
+                 * Having a multiplier for the income is a great way of doing AI
+                 * cheating, since it feels natural and often not like cheating at
+                 * all.
+                 * 
+                 * For example, the human player can still actively reduce the amount of
+                 * money the AI gets by stopping cargo / capture colonies with custom houses.
+                 */
+                
+                final int tradeProfitMultiplierCheat = getSpecification().getInteger(GameOptions.TRADE_PROFIT_MULTIPLIER_CHEAT);
+                final int tradeProfitMultiplierCheatTurns = getSpecification().getInteger(GameOptions.TRADE_PROFIT_MULTIPLIER_CHEAT_TURNS);
+                
+                /*
+                 * Linear reduction of the tradeProfitMultiplierCheat from the first year
+                 * until turn number tradeProfitMultiplierCheatTurns.
+                 */
+                final double currentMultiplier = Math.max(1.0D,
+                        tradeProfitMultiplierCheat * ((double) tradeProfitMultiplierCheatTurns - getGame().getTurn().getNumber()) / tradeProfitMultiplierCheatTurns);
+                
+                final int adjustedGoldAfterCheating = (int) (incomeAfterTaxes * currentMultiplier);
+                modifyGold(adjustedGoldAfterCheating);
+            } else {
+                modifyGold(incomeAfterTaxes);
+            }
+            
             market.modifySales(type, a);
             if (container != null) container.addGoods(type, -a);
             market.modifyIncomeBeforeTaxes(type, incomeBeforeTaxes);
@@ -2027,12 +2094,13 @@ outer:  for (Effect effect : effects) {
                     // Revealed tiles in 11x11 block in Col1
                     final int fullRadius = (int)father
                         .apply((float)colony.getLineOfSight(),
-                               turn, Modifier.EXPOSED_TILES_RADIUS);
+                            turn, Modifier.EXPOSED_TILES_RADIUS);
                     tiles.addAll(exploreTiles(t.getSurroundingTiles(1,
                                 fullRadius)));
                     cs.add(See.only(this), tiles);
                 }
-
+                break;
+                
             case "model.event.newRecruits":
                 if (europe != null) {
                     europeDirty = europe.replaceRecruits(random);
@@ -2181,7 +2249,7 @@ outer:  for (Effect effect : effects) {
      */
     public void csCombat(FreeColGameObject attacker,
                          FreeColGameObject defender,
-                         List<CombatResult> crs,
+                         List<CombatEffectType> crs,
                          Random random,
                          ChangeSet cs) {
         CombatModel combatModel = getGame().getCombatModel();
@@ -2234,18 +2302,21 @@ outer:  for (Effect effect : effects) {
 
         // If the combat results were not specified (usually the case),
         // query the combat model.
+        CombatResult combatResult = null;
         if (crs == null) {
-            crs = combatModel.generateAttackResult(random, attacker, defender);
+            combatResult = combatModel.generateAttackResult(random, attacker, defender);
+            crs = combatResult.getEffects();
         }
         if (crs.isEmpty()) {
             throw new RuntimeException("empty attack result: " + this);
         }
+        
         // Extract main result, insisting it is one of the fundamental cases,
         // and add the animation.
         // Set vis so that loser always sees things.
         // FIXME: Bombard animations
         See vis; // Visibility that insists on the loser seeing the result.
-        CombatResult result = crs.remove(0);
+        CombatEffectType result = crs.remove(0);
         switch (result) {
         case NO_RESULT:
             vis = See.perhaps();
@@ -2280,6 +2351,7 @@ outer:  for (Effect effect : effects) {
             throw new IllegalStateException("generateAttackResult returned: "
                                             + result);
         }
+        
         // Now process the details.
         boolean attackerTileDirty = false;
         boolean defenderTileDirty = false;
@@ -2292,7 +2364,18 @@ outer:  for (Effect effect : effects) {
             : null;
         int attackerTension = 0;
         int defenderTension = 0;
-        for (CombatResult cr : crs) {
+        
+        if (combatResult != null && combatResult.isAttackerHitpointsAffected()) {
+            attackerUnit.setHitPoints(combatResult.getAttackerHitpointsAfter());
+            attackerTileDirty = true;
+        }
+        
+        if (combatResult != null && combatResult.isDefenderHitpointsAffected()) {
+            defenderUnit.setHitPoints(combatResult.getDefenderHitpointsAfter());
+            defenderTileDirty = true;
+        }
+        
+        for (CombatEffectType cr : crs) {
             boolean ok;
             switch (cr) {
             case AUTOEQUIP_UNIT:
@@ -2302,7 +2385,7 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case BURN_MISSIONS:
-                ok = isAttack && result == CombatResult.WIN
+                ok = isAttack && result == CombatEffectType.WIN
                     && natives != null
                     && isEuropean() && defenderPlayer.isIndian();
                 if (ok) {
@@ -2311,7 +2394,7 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case CAPTURE_AUTOEQUIP:
-                ok = isAttack && result == CombatResult.WIN
+                ok = isAttack && result == CombatEffectType.WIN
                     && settlement != null;
                 if (ok) {
                     csCaptureAutoEquip(attackerUnit, defenderUnit, cs);
@@ -2319,9 +2402,9 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case CAPTURE_COLONY:
-                ok = isAttack && result == CombatResult.WIN
+                ok = isAttack && result == CombatEffectType.WIN
                     && colony != null
-                    && isEuropean() && defenderPlayer.isEuropean();
+                    && (isEuropean() || isUndead()) && (defenderPlayer.isEuropean() || defenderPlayer.isUndead());
                 if (ok) {
                     csCaptureColony(attackerUnit, (ServerColony)colony,
                                     random, cs);
@@ -2331,7 +2414,7 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case CAPTURE_CONVERT:
-                ok = isAttack && result == CombatResult.WIN
+                ok = isAttack && result == CombatEffectType.WIN
                     && natives != null
                     && isEuropean() && defenderPlayer.isIndian();
                 if (ok) {
@@ -2340,9 +2423,9 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case CAPTURE_EQUIP:
-                ok = isAttack && result != CombatResult.NO_RESULT;
+                ok = isAttack && result != CombatEffectType.NO_RESULT;
                 if (ok) {
-                    if (result == CombatResult.WIN) {
+                    if (result == CombatEffectType.WIN) {
                         csCaptureEquip(attackerUnit, defenderUnit, cs);
                     } else {
                         csCaptureEquip(defenderUnit, attackerUnit, cs);
@@ -2351,9 +2434,9 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case CAPTURE_UNIT:
-                ok = isAttack && result != CombatResult.NO_RESULT;
+                ok = isAttack && result != CombatEffectType.NO_RESULT;
                 if (ok) {
-                    if (result == CombatResult.WIN) {
+                    if (result == CombatEffectType.WIN) {
                         csCaptureUnit(attackerUnit, defenderUnit, cs);
                     } else {
                         csCaptureUnit(defenderUnit, attackerUnit, cs);
@@ -2363,7 +2446,7 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case DAMAGE_COLONY_SHIPS:
-                ok = isAttack && result == CombatResult.WIN
+                ok = isAttack && result == CombatEffectType.WIN
                     && colony != null;
                 if (ok) {
                     csDamageColonyShips(attackerUnit, colony, cs);
@@ -2371,11 +2454,11 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case DAMAGE_SHIP_ATTACK:
-                ok = isAttack && result != CombatResult.NO_RESULT
-                    && ((result == CombatResult.WIN) ? defenderUnit
+                ok = isAttack && result != CombatEffectType.NO_RESULT
+                    && ((result == CombatEffectType.WIN) ? defenderUnit
                         : attackerUnit).isNaval();
                 if (ok) {
-                    if (result == CombatResult.WIN) {
+                    if (result == CombatEffectType.WIN) {
                         csDamageShipAttack(attackerUnit, defenderUnit, cs);
                         defenderTileDirty = true;
                     } else {
@@ -2385,7 +2468,7 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case DAMAGE_SHIP_BOMBARD:
-                ok = isBombard && result == CombatResult.WIN
+                ok = isBombard && result == CombatEffectType.WIN
                     && defenderUnit.isNaval();
                 if (ok) {
                     csDamageShipBombard(attackerSettlement, defenderUnit, cs);
@@ -2393,9 +2476,9 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case DEMOTE_UNIT:
-                ok = isAttack && result != CombatResult.NO_RESULT;
+                ok = isAttack && result != CombatEffectType.NO_RESULT;
                 if (ok) {
-                    if (result == CombatResult.WIN) {
+                    if (result == CombatEffectType.WIN) {
                         csDemoteUnit(attackerUnit, defenderUnit, cs);
                         defenderTileDirty = true;
                     } else {
@@ -2405,7 +2488,7 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case DESTROY_COLONY:
-                ok = isAttack && result == CombatResult.WIN
+                ok = isAttack && result == CombatEffectType.WIN
                     && colony != null
                     && isIndian() && defenderPlayer.isEuropean();
                 if (ok) {
@@ -2417,7 +2500,7 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case DESTROY_SETTLEMENT:
-                ok = isAttack && result == CombatResult.WIN
+                ok = isAttack && result == CombatEffectType.WIN
                     && natives != null
                     && defenderPlayer.isIndian();
                 if (ok) {
@@ -2432,24 +2515,24 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case EVADE_ATTACK:
-                ok = isAttack && result == CombatResult.NO_RESULT
+                ok = isAttack && result == CombatEffectType.NO_RESULT
                     && defenderUnit.isNaval();
                 if (ok) {
                     csEvadeAttack(attackerUnit, defenderUnit, cs);
                 }
                 break;
             case EVADE_BOMBARD:
-                ok = isBombard && result == CombatResult.NO_RESULT
+                ok = isBombard && result == CombatEffectType.NO_RESULT
                     && defenderUnit.isNaval();
                 if (ok) {
                     csEvadeBombard(attackerSettlement, defenderUnit, cs);
                 }
                 break;
             case LOOT_SHIP:
-                ok = isAttack && result != CombatResult.NO_RESULT
+                ok = isAttack && result != CombatEffectType.NO_RESULT
                     && attackerUnit.isNaval() && defenderUnit.isNaval();
                 if (ok) {
-                    if (result == CombatResult.WIN) {
+                    if (result == CombatEffectType.WIN) {
                         csLootShip(attackerUnit, defenderUnit, cs);
                     } else {
                         csLootShip(defenderUnit, attackerUnit, cs);
@@ -2457,7 +2540,7 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case LOSE_AUTOEQUIP:
-                ok = isAttack && result == CombatResult.WIN
+                ok = isAttack && result == CombatEffectType.WIN
                     && settlement != null;
                 if (ok) {
                     csLoseAutoEquip(attackerUnit, defenderUnit, cs);
@@ -2465,9 +2548,9 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case LOSE_EQUIP:
-                ok = isAttack && result != CombatResult.NO_RESULT;
+                ok = isAttack && result != CombatEffectType.NO_RESULT;
                 if (ok) {
-                    if (result == CombatResult.WIN) {
+                    if (result == CombatEffectType.WIN) {
                         csLoseEquip(attackerUnit, defenderUnit, cs);
                         defenderTileDirty = true;
                     } else {
@@ -2477,7 +2560,7 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case PILLAGE_COLONY:
-                ok = isAttack && result == CombatResult.WIN
+                ok = isAttack && result == CombatEffectType.WIN
                     && colony != null
                     && isIndian() && defenderPlayer.isEuropean();
                 if (ok) {
@@ -2487,9 +2570,9 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case PROMOTE_UNIT:
-                ok = isAttack && result != CombatResult.NO_RESULT;
+                ok = isAttack && result != CombatEffectType.NO_RESULT;
                 if (ok) {
-                    if (result == CombatResult.WIN) {
+                    if (result == CombatEffectType.WIN) {
                         csPromoteUnit(attackerUnit, cs);
                         attackerTileDirty = true;
                     } else {
@@ -2499,7 +2582,7 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case SINK_COLONY_SHIPS:
-                ok = isAttack && result == CombatResult.WIN
+                ok = isAttack && result == CombatEffectType.WIN
                     && colony != null;
                 if (ok) {
                     csSinkColonyShips(attackerUnit, colony, cs);
@@ -2507,11 +2590,11 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case SINK_SHIP_ATTACK:
-                ok = isAttack && result != CombatResult.NO_RESULT
-                    && ((result == CombatResult.WIN) ? defenderUnit
+                ok = isAttack && result != CombatEffectType.NO_RESULT
+                    && ((result == CombatEffectType.WIN) ? defenderUnit
                         : attackerUnit).isNaval();
                 if (ok) {
-                    if (result == CombatResult.WIN) {
+                    if (result == CombatEffectType.WIN) {
                         csSinkShipAttack(attackerUnit, defenderUnit, cs);
                         defenderTileDirty = true;
                     } else {
@@ -2521,7 +2604,7 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case SINK_SHIP_BOMBARD:
-                ok = isBombard && result == CombatResult.WIN
+                ok = isBombard && result == CombatEffectType.WIN
                     && defenderUnit.isNaval();
                 if (ok) {
                     csSinkShipBombard(attackerSettlement, defenderUnit, cs);
@@ -2529,9 +2612,9 @@ outer:  for (Effect effect : effects) {
                 }
                 break;
             case SLAUGHTER_UNIT:
-                ok = isAttack && result != CombatResult.NO_RESULT;
+                ok = isAttack && result != CombatEffectType.NO_RESULT;
                 if (ok) {
-                    if (result == CombatResult.WIN) {
+                    if (result == CombatEffectType.WIN) {
                         csSlaughterUnit(attackerUnit, defenderUnit, cs);
                         defenderTileDirty = true;
                         attackerTension -= Tension.TENSION_ADD_NORMAL;
@@ -2593,18 +2676,18 @@ outer:  for (Effect effect : effects) {
             if (isEuropean()) {
                 csChangeStance(Stance.WAR, defenderPlayer, true, cs);
             } else if (isIndian()) {
-                if (result == CombatResult.WIN) {
+                if (result == CombatEffectType.WIN) {
                     attackerTension -= Tension.TENSION_ADD_MINOR;
-                } else if (result == CombatResult.LOSE) {
+                } else if (result == CombatEffectType.LOSE) {
                     attackerTension += Tension.TENSION_ADD_MINOR;
                 }
             }
             if (defenderPlayer.isEuropean()) {
                 ((ServerPlayer)defenderPlayer).csChangeStance(Stance.WAR, this, true, cs);
             } else if (defenderPlayer.isIndian()) {
-                if (result == CombatResult.WIN) {
+                if (result == CombatEffectType.WIN) {
                     defenderTension += Tension.TENSION_ADD_MINOR;
-                } else if (result == CombatResult.LOSE) {
+                } else if (result == CombatEffectType.LOSE) {
                     defenderTension -= Tension.TENSION_ADD_MINOR;
                 }
             }
@@ -2933,7 +3016,7 @@ outer:  for (Effect effect : effects) {
         final StringTemplate winnerNation = winner.getApparentOwnerName();
         final StringTemplate winnerLocation = winner.getLocation()
             .getLocationLabelFor(winnerPlayer);
-
+        
         // Capture the unit.  There are visibility implications for
         // both players because the captured unit might be the only
         // one on its tile, and the winner might have captured a unit
@@ -4174,7 +4257,7 @@ outer:  for (Effect effect : effects) {
             // accepts the tile offer, we can verify that the offer
             // was made.
             DiplomacySession ds = new DiplomacySession(tile.getFirstUnit(),
-                tile.getOwningSettlement(), FreeCol.getTimeout(false));
+                tile.getOwningSettlement(), FreeCol.getTimeout(true));  // TODO: Timeout in multiplayer
             ds.register();
             ds.setAgreement(DiplomaticTrade
                 .makePeaceTreaty(DiplomaticTrade.TradeContext.CONTACT,
@@ -4210,7 +4293,7 @@ outer:  for (Effect effect : effects) {
         // Initial agreement goes first to this player
         DiplomaticTrade agreement = DiplomaticTrade
             .makePeaceTreaty(DiplomaticTrade.TradeContext.CONTACT, this, other);
-        final long timeout = FreeCol.getTimeout(false);
+        final long timeout = FreeCol.getTimeout(true); // TODO: Timeout in multiplayer
         DiplomacySession session = (settlement == null)
             ? new DiplomacySession(unit, otherUnit, timeout)
             : new DiplomacySession(unit, settlement, timeout);
@@ -4276,13 +4359,15 @@ outer:  for (Effect effect : effects) {
                 }
             }
 
+            unit.changeOwner(newOwner);
             if (mainType != unit.getType() && !unit.changeType(mainType)) {
                 logger.warning("Type change failure: " + unit
                     + " -> " + mainType);
                 return false;
             }
+        } else {
+            unit.changeOwner(newOwner);
         }
-        unit.changeOwner(newOwner);
         if (loc != null) unit.setLocation(loc);
         if (unit.isCarrier()) {
             cs.addRemoves(See.only(this), unit, unit.getUnitList());
@@ -4419,7 +4504,7 @@ outer:  for (Effect effect : effects) {
         List<Settlement> settlements = getSettlementList();
         for (Settlement settlement : settlements) {
             ((TurnTaker)settlement).csNewTurn(random, lb, cs);
-            newSoL += settlement.getSoL();
+            newSoL += settlement.getSonsOfLiberty();
         }
 
         int numberOfSettlements = settlements.size();

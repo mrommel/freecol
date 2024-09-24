@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -43,6 +43,8 @@ import net.sf.freecol.common.model.StringTemplate;
 import net.sf.freecol.common.option.GameOptions;
 import net.sf.freecol.common.option.MapGeneratorOptions;
 import net.sf.freecol.common.option.OptionGroup;
+import net.sf.freecol.common.resources.AudioResource;
+import net.sf.freecol.common.resources.ResourceManager;
 import net.sf.freecol.common.util.Utils;
 
 
@@ -291,6 +293,11 @@ public final class PreGameController extends FreeColClientHolder {
         // Stop the long introduction sound and play the player intro
         gui.playSound(null);
         gui.playSound("sound.intro." + player.getNationId());
+        
+        final AudioResource defaultPlaylist = ResourceManager.getAudioResource("sound.music.playlist.default", true);
+        if (defaultPlaylist != null) {
+            getFreeColClient().getSoundController().setDefaultPlaylist(defaultPlaylist.getAllAudio());
+        }
         
         // Switch to InGame mode
         fcc.changeClientState(true);

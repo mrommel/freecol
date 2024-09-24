@@ -14,6 +14,8 @@ import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 
+import javax.swing.SwingUtilities;
+
 import net.sf.freecol.client.gui.Canvas;
 import net.sf.freecol.client.gui.SwingGUI;
 import net.sf.freecol.common.model.Tile;
@@ -30,7 +32,7 @@ public class MapViewerRepaintManager {
     private VolatileImage backBufferImage = null;
     private BufferedImage nonAnimationBufferImage = null;
 
-    private Rectangle dirtyRegion = new Rectangle(0, 0, 0, 0);
+    private Rectangle dirtyRegion = new Rectangle(0, 0, -1, -1);
     private Tile focus = null;
     private Point focusPoint = null;
     private boolean repaintsBlocked = false;
@@ -46,10 +48,13 @@ public class MapViewerRepaintManager {
      * 
      * @param mapViewerBounds The bounds used when determining the size of the
      *      buffers, and also for checking if the focus has changed.
-     * @return {@code true} if the buffers have been reset -- meaning prior content has
-     *      been lost.
+     * @param focus A new {@code Tile} to focus on.
+     * @return {@code true} if the buffers have been reset -- meaning
+     *      prior content has been lost.
      */
     boolean prepareBuffers(MapViewerBounds mapViewerBounds, Tile focus) {
+        assert SwingUtilities.isEventDispatchThread();
+        
         final Dimension size = mapViewerBounds.getSize();
 
         final Tile oldFocus = this.focus;
@@ -79,9 +84,7 @@ public class MapViewerRepaintManager {
         
         updateDirtyRegionWithDirtyTiles(mapViewerBounds);
         
-        if (!oldFocus.equals(focus)) {
-            reuseNonDirtyAreasIfPossible(mapViewerBounds, oldFocus, oldFocusPoint);
-        }
+        reuseNonDirtyAreasIfPossible(mapViewerBounds, oldFocus, oldFocusPoint);
         
         return false;
     }
@@ -98,8 +101,12 @@ public class MapViewerRepaintManager {
 
     /**
      * Gets the clip bounds that should be fully redrawn.
+     *
+     * @return The region to redraw.
      */
     Rectangle getDirtyClipBounds() {
+        assert SwingUtilities.isEventDispatchThread();
+        
         return dirtyRegion;
     }
 
@@ -109,7 +116,9 @@ public class MapViewerRepaintManager {
      * @return {@code true} if no part of the buffer can be reused the next
      *      time the map gets painted.
      */
-    boolean isAllDirty() {
+    public boolean isAllDirty() {
+        assert SwingUtilities.isEventDispatchThread();
+        
         return backBufferImage == null
                 || dirtyRegion != null
                 && dirtyRegion.x == 0
@@ -121,13 +130,19 @@ public class MapViewerRepaintManager {
     /**
      * Marks the given area as dirty for all layers.
      * 
-     * This method should only be used if {@paintImmediately} is called
-     * both before and after.
+     * This method should only be used if {@link paintImmediately}
+     * is called both before and after.
      * 
      * @param bounds The bounds that should be marked dirty.
      */
     public void markAsDirty(Rectangle bounds) {
-        this.dirtyRegion = this.dirtyRegion.union(bounds);
+        assert SwingUtilities.isEventDispatchThread();
+        
+        if (dirtyRegion.isEmpty()) {
+            this.dirtyRegion = bounds;
+        } else {
+            this.dirtyRegion = this.dirtyRegion.union(bounds);
+        }
     }
     
     /**
@@ -136,6 +151,8 @@ public class MapViewerRepaintManager {
      * @param dirtyTile The {@code Tile} that should be repainted.
      */
     public void markAsDirty(Tile dirtyTile) {
+        assert SwingUtilities.isEventDispatchThread();
+        
         Objects.requireNonNull(dirtyTile, "dirtyTile");
         this.dirtyTiles.add(dirtyTile);
     }
@@ -146,6 +163,8 @@ public class MapViewerRepaintManager {
      * @param dirtyTiles The {@code Tile}s that should be repainted.
      */
     public void markAsDirty(Collection<Tile> dirtyTiles) {
+        assert SwingUtilities.isEventDispatchThread();
+        
         this.dirtyTiles.addAll(dirtyTiles);
     }
 
@@ -154,6 +173,8 @@ public class MapViewerRepaintManager {
      * method as it causes full repaints.
      */
     public void markAsDirty() {
+        assert SwingUtilities.isEventDispatchThread();
+        
         if (backBufferImage == null) {
             /* The dirtyRegion will be defined by the next call to prepareBuffers */
             this.dirtyRegion = null;
@@ -169,21 +190,31 @@ public class MapViewerRepaintManager {
      *          has completed.
      */
     void markAsClean() {
-        this.dirtyRegion = new Rectangle(0, 0, 0 ,0);
+        assert SwingUtilities.isEventDispatchThread();
+        
+        this.dirtyRegion = new Rectangle(0, 0, -1, -1);
     }
 
     /**
      * If available, a buffer that contains the entire map.
+     *
+     * @return The map buffer.
      */
     VolatileImage getBackBufferImage() {
+        assert SwingUtilities.isEventDispatchThread();
+        
         return backBufferImage;
     }
 
     /**
      * If available, a buffer that contains the non-animated parts
      * of the map.
+     *
+     * @return The static map buffer.
      */
     BufferedImage getNonAnimationBufferImage() {
+        assert SwingUtilities.isEventDispatchThread();
+        
         return nonAnimationBufferImage;
     }
 
@@ -201,6 +232,8 @@ public class MapViewerRepaintManager {
      *      {@code false} allows repaints to be made again. 
      */
     public void setRepaintsBlocked(boolean repaintsBlocked) {
+        assert SwingUtilities.isEventDispatchThread();
+        
         this.repaintsBlocked = repaintsBlocked;
     }
 
@@ -209,8 +242,13 @@ public class MapViewerRepaintManager {
      * back buffer.
      * 
      * @see #setRepaintsBlocked(boolean)
+     *
+     * @param size A size to check for initialized buffers.
+     * @return True if repaints are blocked.
      */
     boolean isRepaintsBlocked(Dimension size) {
+        assert SwingUtilities.isEventDispatchThread();
+        
         return repaintsBlocked && !isBuffersUninitialized(size);
     }
 
@@ -223,6 +261,10 @@ public class MapViewerRepaintManager {
     /**
      * Moves the contents of the buffers to a new location
      * after changing focus tile.
+     *
+     * @param mapViewerBounds The bounds defining the focus.
+     * @param oldFocus The previous focus {@code Tile}.
+     * @param oldFocusPoint The previous focus {@code Point}.
      */
     private void reuseNonDirtyAreasIfPossible(
             final MapViewerBounds mapViewerBounds,
@@ -232,7 +274,9 @@ public class MapViewerRepaintManager {
 
         final int dx = repositionedOldFocusPoint.x - oldFocusPoint.x;
         final int dy = repositionedOldFocusPoint.y - oldFocusPoint.y;
-        updateDirtyRegion(mapViewerBounds, dx, dy);
+        if (dx != 0 || dy != 0) {
+            updateDirtyRegion(mapViewerBounds, dx, dy);
+        }
 
         if (!isAllDirty()) {
             moveContents(backBufferImage, dx, dy);
@@ -243,32 +287,29 @@ public class MapViewerRepaintManager {
     /**
      * Updates the dirty region by moving it in the specified direction.
      * 
+     * @param mapViewerBounds The bounds defining the focus.
      * @param dx The number of pixels to move the contents of the buffers
      *      for the x coordinate. The value can be negative.
      * @param dy The number of pixels to move the contents of the buffers
      *      for the y coordinate. The value can be negative.
      */
-    private void updateDirtyRegion(final MapViewerBounds mapViewerBounds, final int dx, final int dy) {
+    private void updateDirtyRegion(final MapViewerBounds mapViewerBounds,
+                                   final int dx, final int dy) {
         final Dimension size = mapViewerBounds.getSize();
-        final TileBounds tileBounds = mapViewerBounds.getTileBounds();
         
         final Rectangle alreadyPaintedBounds = new Rectangle(0, 0, size.width, size.height);
         alreadyPaintedBounds.translate(dx, dy);
-        
+
         final Area dirtyArea = new Area(new Rectangle(0, 0, size.width, size.height));
         dirtyArea.subtract(new Area(alreadyPaintedBounds));
         final Rectangle newDirtyBounds = dirtyArea.getBounds();
-        
-        /*
-         * TODO: Move the definition, on how far tile graphics can extend into neighbouring tiles,
-         *       from TileClippingBounds to MapViewerBounds -- and use here.
-         *       
-         *       For now, adding enough space to satisfy superExtendedTiles.
-         */
-        newDirtyBounds.grow(tileBounds.getHalfWidth(), tileBounds.getHeight());
-        
-        
-        if (dirtyRegion != null) {
+        if (newDirtyBounds.width == 0) {
+            newDirtyBounds.width = -1;
+        }
+        if (newDirtyBounds.height == 0) {
+            newDirtyBounds.height = -1;
+        }
+        if (dirtyRegion != null && !dirtyRegion.isEmpty()) {
             dirtyRegion = dirtyRegion.union(newDirtyBounds);
         } else {
             dirtyRegion = newDirtyBounds;
@@ -279,6 +320,10 @@ public class MapViewerRepaintManager {
 
     /**
      * Move the content of an opaque {@code Image}.
+     *
+     * @param image The {@code Image} to move.
+     * @param dx The x-coordinate change.
+     * @param dy The y-coordinate change.
      */
     private static void moveContents(Image image, final int dx, final int dy) {
         final Graphics2D g2d = (Graphics2D) image.getGraphics();
@@ -292,6 +337,11 @@ public class MapViewerRepaintManager {
      * 
      * Please use the more efficient {@link #moveContents(Image, int, int)}
      * for opaque images.
+     *
+     * @param image The {@code Image} to move.
+     * @param dx The x-coordinate change.
+     * @param dy The y-coordinate change.
+     * @return The new image.
      */
     private static BufferedImage moveContentsAndRecreateImage(BufferedImage image, final int dx, final int dy) {
         final BufferedImage result = Utils.getGoodGraphicsDevice()
@@ -306,7 +356,11 @@ public class MapViewerRepaintManager {
     private void updateDirtyRegionWithDirtyTiles(MapViewerBounds mapViewerBounds) {
         for (Tile dirtyTile : dirtyTiles) {
             final Rectangle dirtyTileBounds = mapViewerBounds.calculateDrawnTileBounds(dirtyTile);
-            dirtyRegion = dirtyRegion.union(dirtyTileBounds);
+            if (dirtyRegion.isEmpty()) {
+                dirtyRegion = dirtyTileBounds;
+            } else {
+                dirtyRegion = dirtyRegion.union(dirtyTileBounds);
+            }
         }
         dirtyTiles.clear();
     }

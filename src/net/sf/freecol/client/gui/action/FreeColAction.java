@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -21,6 +21,7 @@ package net.sf.freecol.client.gui.action;
 
 import java.awt.event.ActionEvent;
 import java.awt.image.BufferedImage;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Logger;
 
@@ -38,7 +39,8 @@ import net.sf.freecol.client.FreeColClient;
 import net.sf.freecol.client.control.ConnectController;
 import net.sf.freecol.client.control.InGameController;
 import net.sf.freecol.client.gui.GUI;
-import net.sf.freecol.client.gui.dialog.*;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.client.gui.dialog.ClientOptionsDialog;
 import net.sf.freecol.common.i18n.Messages;
 import net.sf.freecol.common.io.FreeColXMLReader;
 import net.sf.freecol.common.io.FreeColXMLWriter;
@@ -115,7 +117,8 @@ public abstract class FreeColAction extends AbstractAction
     protected final FreeColClient freeColClient;
 
     private int orderButtonImageCount = 0;
-
+    private List<String> imageIconKeys = new ArrayList<>();
+    private boolean canvasKeyBinding = false;
 
     /**
      * Creates a new {@code FreeColAction}.
@@ -253,23 +256,36 @@ public abstract class FreeColAction extends AbstractAction
      * @param key The identifier of the action.
      */
     protected void addImageIcons(String key) {
+        imageIconKeys.add(key);
+        
         /*
          * Running this method later so that we are certain images
          * have been loaded before trying to get them.
          */
         SwingUtilities.invokeLater(() -> {
-            List<BufferedImage> images = getGUI().getFixedImageLibrary().getButtonImages(key);
-            orderButtonImageCount = images.size();
-            if (hasOrderButtons()) {
-                putValue(BUTTON_IMAGE, new ImageIcon(images.remove(0)));
-                putValue(BUTTON_ROLLOVER_IMAGE, new ImageIcon(images.remove(0)));
-                putValue(BUTTON_PRESSED_IMAGE, new ImageIcon(images.remove(0)));
-                putValue(BUTTON_DISABLED_IMAGE, new ImageIcon(images.remove(0)));
-            } else {
-                logger.warning("Found only " + orderButtonImageCount
-                    + " order button images for " + getId() + "/" + key);
-            }
+            updateImageIcon(key);
         });
+    }
+
+    public void updateRegisteredImageIcons() {
+        for (String key : imageIconKeys) {
+            updateImageIcon(key);
+        }
+    }
+
+    private void updateImageIcon(String key) {
+        final ImageLibrary lib = getGUI().getFixedImageLibrary();
+        List<BufferedImage> images = lib.getButtonImages(key);
+        orderButtonImageCount = images.size();
+        if (hasOrderButtons()) {
+            putValue(BUTTON_IMAGE, new ImageIcon(images.remove(0)));
+            putValue(BUTTON_ROLLOVER_IMAGE, new ImageIcon(images.remove(0)));
+            putValue(BUTTON_PRESSED_IMAGE, new ImageIcon(images.remove(0)));
+            putValue(BUTTON_DISABLED_IMAGE, new ImageIcon(images.remove(0)));
+        } else {
+            logger.warning("Found only " + orderButtonImageCount
+                + " order button images for " + getId() + "/" + key);
+        }
     }
 
     /**
@@ -347,7 +363,7 @@ public abstract class FreeColAction extends AbstractAction
      *     is not visible.
      */
     protected boolean shouldBeEnabled() {
-        return !getGUI().isClientOptionsDialogShowing();
+        return !getGUI().isDialogShowing();
     }
 
     /**
@@ -355,8 +371,7 @@ public abstract class FreeColAction extends AbstractAction
      * {@link #shouldBeEnabled}.
      */
     public void update() {
-        boolean b = this.shouldBeEnabled();
-        if (this.isEnabled() != b) this.setEnabled(b);
+        this.setEnabled(this.shouldBeEnabled());
     }
 
 
@@ -401,6 +416,24 @@ public abstract class FreeColAction extends AbstractAction
     public String getEnabledBy() {
         /* FreeColAction cannot be enabled/disabled by other options. */
         return null;
+    }
+    
+    /**
+     * Checks if this action should have its accelerator key added to the {@code Canvas}.
+     * @return {@code true} if the accelerator key should be added to the {@code Canvas}. This
+     *      is typically used when this action is not used in any menu.
+     */
+    public boolean isCanvasKeyBinding() {
+        return canvasKeyBinding;
+    }
+    
+    /**
+     * Defines if this action should have its accelerator key added to the {@code Canvas}.
+     * @param canvasKeyBinding {@code true} if the accelerator key should be added to the
+     *      {@code Canvas}. This is typically used when this action is not used in any menu.
+     */
+    public void setCanvasKeyBinding(boolean canvasKeyBinding) {
+        this.canvasKeyBinding = canvasKeyBinding;
     }
 
 

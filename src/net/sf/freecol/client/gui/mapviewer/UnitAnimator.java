@@ -1,6 +1,5 @@
 package net.sf.freecol.client.gui.mapviewer;
 
-import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.image.BufferedImage;
 import java.util.HashMap;
@@ -10,8 +9,6 @@ import javax.swing.JLabel;
 
 import net.sf.freecol.client.FreeColClient;
 import net.sf.freecol.client.gui.ImageLibrary;
-import net.sf.freecol.common.i18n.Messages;
-import net.sf.freecol.common.model.Player;
 import net.sf.freecol.common.model.Tile;
 import net.sf.freecol.common.model.Unit;
 
@@ -26,13 +23,11 @@ public class UnitAnimator {
     private final java.util.Map<Unit, JLabel> unitsOutForAnimationLabels
         = new HashMap<>();
     
-    private final FreeColClient freeColClient;
     private final MapViewer mapViewer;
     private final ImageLibrary lib;
     
     
     UnitAnimator(FreeColClient freeColClient, MapViewer mapViewer, ImageLibrary lib) {
-        this.freeColClient = freeColClient;
         this.mapViewer = mapViewer;
         this.lib = lib;
     }
@@ -76,7 +71,9 @@ public class UnitAnimator {
     }
     
     /**
-     * Checks if at least one unit is currently being animated.
+     * Are any units being animated?
+     *
+     * @return True if unit animation underway.
      */
     boolean isUnitsOutForAnimation() {
         return !unitsOutForAnimation.isEmpty();
@@ -100,8 +97,8 @@ public class UnitAnimator {
      * @return The {@code Point} to position the label.
      */
     public Point getAnimationPosition(JLabel unitLabel, Tile tile) {
-        return mapViewer.getTileBounds().calculateUnitLabelPositionInTile(unitLabel,
-            mapViewer.getMapViewerBounds().calculateTilePosition(tile, false));
+        final Point tilePosition = mapViewer.getMapViewerBounds().calculateTilePosition(tile, false);
+        return mapViewer.calculateUnitLabelPositionInTile(unitLabel, tilePosition);
     }
     
     /**
@@ -111,25 +108,13 @@ public class UnitAnimator {
      * @return A {@code JLabel} to use in animation.
      */
     private JLabel createUnitAnimationLabel(Unit unit) {
-        final BufferedImage unitImg =  this.lib.getScaledUnitImage(unit);
-        final int width = mapViewer.getTileBounds().getHalfWidth() + unitImg.getWidth()/2;
-        final int height = unitImg.getHeight();
+        final BufferedImage unitImg = this.lib.getScaledUnitImage(unit);
 
-        BufferedImage img = new BufferedImage(width, height,
-                                              BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g2d = img.createGraphics();
+        final JLabel label = new JLabel(new ImageIcon(unitImg));
+        label.setHorizontalAlignment(JLabel.CENTER);
+        label.setVerticalAlignment(JLabel.CENTER);
+        label.setSize(unitImg.getWidth(), unitImg.getHeight());
 
-        final int unitX = (width - unitImg.getWidth()) / 2;
-        g2d.drawImage(unitImg, unitX, 0, null);
-
-        final Player player = freeColClient.getMyPlayer();
-        String text = Messages.message(unit.getOccupationLabel(player, false));
-        g2d.drawImage(this.lib.getOccupationIndicatorChip(g2d, unit, text),
-                      0, 0, null);
-
-        final JLabel label = new JLabel(new ImageIcon(img));
-        label.setSize(width, height);
-        g2d.dispose();
         return label;
     }
 }

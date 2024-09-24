@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -222,13 +222,6 @@ public class TranslationReport {
 
     /**
      * Sets inVariable as needed
-     *
-     * @param superfluousVariables
-     * @param key
-     * @param value
-     * @param propertiesValue
-     * @param lastIndex
-     * @param inVariable
      */
     private static void isInVariable(ArrayList<String> superfluousVariables, String key, String value, String propertiesValue, int lastIndex, boolean inVariable) {
         for (int index = 0; index < propertiesValue.length() - 1; index++) {
@@ -253,9 +246,6 @@ public class TranslationReport {
 
     /**
      * Produces a shorter name.
-     *
-     * @param localFile
-     * @return
      */
     private static StringBuilder shortenName(String localFile) {
         StringBuilder out = new StringBuilder(5);
@@ -269,9 +259,6 @@ public class TranslationReport {
 
     /**
      * Adds space after a number.
-     *
-     * @param number
-     * @return
      */
     private static StringBuilder prettyPrint(int number) {
         StringBuilder output = new StringBuilder(4);
@@ -283,10 +270,6 @@ public class TranslationReport {
     }
 
 
-    /**
-     * @param missingKeys
-     * @return
-     */
     private static TreeSet<String> sort(ArrayList<String> missingKeys) {
         TreeSet<String> sorted = new TreeSet<>();
         sorted.addAll(missingKeys);

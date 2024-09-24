@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -28,7 +28,9 @@ import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.awt.image.RescaleOp;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -52,10 +54,10 @@ import net.sf.freecol.common.model.Resource;
 import net.sf.freecol.common.model.Settlement;
 import net.sf.freecol.common.model.Tile;
 import net.sf.freecol.common.model.TileImprovement;
-import net.sf.freecol.common.model.TileImprovementStyle;
 import net.sf.freecol.common.model.TileItem;
 import net.sf.freecol.common.model.TileType;
 import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.util.ImageUtils;
 
 
 /**
@@ -155,8 +157,7 @@ public final class TileViewer extends FreeColClientHolder {
             = (overlayImage != null) ? overlayImage.getHeight()
             : (tileType.isForested()) ? this.lib.getForestedTileSize().height
             : this.tileHeight;
-        BufferedImage image = new BufferedImage(this.tileWidth, compoundHeight,
-                                                BufferedImage.TYPE_INT_ARGB);
+        BufferedImage image = ImageUtils.createBufferedImage(this.tileWidth, compoundHeight);
         Graphics2D g2d = image.createGraphics();
         g2d.translate(0, compoundHeight - this.tileHeight);
         displayAnimatedBaseTiles(g2d, tile, false);
@@ -183,8 +184,7 @@ public final class TileViewer extends FreeColClientHolder {
             : (tileType.isForested())
             ? this.lib.getForestedTileSize().height
             : this.tileHeight;
-        BufferedImage image = new BufferedImage(this.tileWidth, compoundHeight,
-                                                BufferedImage.TYPE_INT_ARGB);
+        BufferedImage image = ImageUtils.createBufferedImage(this.tileWidth, compoundHeight);
         Graphics2D g2d = image.createGraphics();
         g2d.translate(0, compoundHeight - this.tileHeight);
         displayTile(g2d, tile, player, overlayImage);
@@ -214,8 +214,7 @@ public final class TileViewer extends FreeColClientHolder {
             : ((tileType.isForested())
                 ? this.lib.getForestedTileSize().height
                 : this.tileHeight);
-        BufferedImage image = new BufferedImage(this.tileWidth, compoundHeight,
-                                                BufferedImage.TYPE_INT_ARGB);
+        BufferedImage image = ImageUtils.createBufferedImage(this.tileWidth, compoundHeight);
         Graphics2D g2d = image.createGraphics();
         g2d.translate(0, compoundHeight - this.tileHeight);
         displayColonyTile(g2d, tile, colony, overlayImage);
@@ -312,7 +311,10 @@ public final class TileViewer extends FreeColClientHolder {
         displayAnimatedBaseTiles(g2d, tile, false);
         displayTileWithBeach(g2d, tile);
         if (!tile.isExplored()) return;
-        drawBaseTileTransitions(g2d, tile);
+        if (!getClientOptions().isRiverAnimationEnabled()
+                || !tile.hasRiver() && !hasRiverDelta(tile)) {
+            drawBaseTileTransitions(g2d, tile);
+        }
         
         RescaleOp rop = (player.canSee(tile)) ? null : standardRescale;
         displayTileItems(g2d, tile, rop, overlayImage);
@@ -369,23 +371,38 @@ public final class TileViewer extends FreeColClientHolder {
      */
     public void displayAnimatedBaseTiles(Graphics2D g2d, Tile tile, boolean freezeAnimation) {
         final TileType tileType = tile.getType();
-        if (tileType != null && tileType.isWater()) { // TODO: And animation enabled
-            /* 
-             * TODO: Add a single shared clock for MapViewer and TileViewer.
-             *       For now, just support water with 125ms frames.
-             */
-            final long ticks;
-            if (freezeAnimation) {
-                ticks = 0;
-            } else {
-                ticks = System.currentTimeMillis() / 125;
-            }
-
+        if (tileType == null) {
+            return;
+        }
+        
+        /* 
+         * TODO: Add a single shared clock for MapViewer and TileViewer.
+         *       For now, just support water with 125ms frames.
+         */
+        final long ticks;
+        if (freezeAnimation || !getClientOptions().isTerrainAnimationsEnabled()) {
+            ticks = 0;
+        } else {
+            ticks = System.currentTimeMillis() / 125;
+        }
+        
+        if (tileType.isWater()) { // TODO: And animation enabled
             final List<Direction> directionsWithLand = allDirectionsWithLand(tile);
             if (directionsWithLand.isEmpty()) {
                 g2d.drawImage(this.lib.getAnimatedScaledTerrainImage(tileType, ticks), 0, 0, null);
             } else {
                 g2d.drawImage(this.lib.getAnimatedScaledWaterAndBeachTerrainImage(tileType, directionsWithLand, ticks), 0, 0, null);
+            }
+            if (getClientOptions().isRiverAnimationEnabled() && hasRiverDelta(tile)) {
+                drawBaseTileTransitions(g2d, tile);
+                drawRiverMouth(g2d, tile, ticks);
+            }
+        } else if (getClientOptions().isRiverAnimationEnabled() && tile.hasRiver()) {
+            g2d.drawImage(this.lib.getScaledTerrainImage(tileType, tile.getX(), tile.getY()), 0, 0, null);
+            drawBaseTileTransitions(g2d, tile);
+            final BufferedImage img = this.lib.getAnimatedScaledRiverTerrainImage(tile, ticks);
+            if (img != null) {
+                g2d.drawImage(img, 0, 0, null);
             }
         }
     }
@@ -410,7 +427,7 @@ public final class TileViewer extends FreeColClientHolder {
         final int x = tile.getX();
         final int y = tile.getY();
 
-        final boolean outForBaseTileAnimation = (tileType != null) && tileType.isWater();
+        final boolean outForBaseTileAnimation = (tileType != null) && (tileType.isWater() || getClientOptions().isRiverAnimationEnabled() && tile.hasRiver());
         if (!outForBaseTileAnimation) {
             // ATTENTION: we assume that all base tiles have the same size
             g2d.drawImage(this.lib.getScaledTerrainImage(tileType, x, y), 0, 0, null);
@@ -438,37 +455,38 @@ public final class TileViewer extends FreeColClientHolder {
     }
     
     void drawBaseTileTransitions(Graphics2D g2d, Tile tile) {
+        if (getClientOptions().getRange(ClientOptions.GRAPHICS_QUALITY) == ClientOptions.GRAPHICS_QUALITY_LOWEST) {
+            return;
+        }
+        
         /*
-         * We are using masks for creating transitions between base tiles. Please note
-         * that corners have not yet been implemented, but the result look good enough
-         * for now.
+         * We are using masks for creating transitions between base tiles.
          */
         
         drawBaseTileTransitionAtDirection(g2d, tile, Direction.NE);
         drawBaseTileTransitionAtDirection(g2d, tile, Direction.SW);
         
-        /*
-         * How to implement corners: When doing the transitions for NW and SE, the base
-         * terrain should be the blended version of the neighbouring tiles. That is,
-         * the result after applying the transitions for NE and SW.
-         */
         drawBaseTileTransitionAtDirection(g2d, tile, Direction.NW);
         drawBaseTileTransitionAtDirection(g2d, tile, Direction.SE);
         
-        drawRiverMouth(g2d, tile);
+        if (!getClientOptions().isRiverAnimationEnabled()) {
+            drawRiverMouth(g2d, tile, 0);
+        }
     }
     
     private void drawBaseTileTransitionAtDirection(Graphics2D g2d, Tile tile, Direction direction) {
-        final BufferedImage transitionImage = this.lib.getBaseTileTransitionImage(tile, direction);
+        final boolean useNiceCorners = getClientOptions().getRange(ClientOptions.GRAPHICS_QUALITY) >= ClientOptions.GRAPHICS_QUALITY_NORMAL;
+        final boolean useVariations = getClientOptions().getRange(ClientOptions.GRAPHICS_QUALITY) >= ClientOptions.GRAPHICS_QUALITY_HIGH;
+        final BufferedImage transitionImage = this.lib.getBaseTileTransitionImage(tile, direction, useNiceCorners, useVariations);
         if (transitionImage != null) {
             g2d.drawImage(transitionImage, 0, 0, null);
         }
     }
     
-    private void drawRiverMouth(Graphics2D g2d, Tile tile) {
-        for (Direction direction : Direction.values()) {
+    boolean hasRiverDelta(Tile tile) {
+        for (Direction direction : Direction.longSides) {
             Tile borderingTile = tile.getNeighbourOrNull(direction);
-            if (borderingTile == null || tile.isLand() || !borderingTile.isLand()) {
+            if (borderingTile == null || tile.isLand() || !borderingTile.isLand() || !tile.isExplored()) {
                 continue;
             }
             
@@ -482,9 +500,36 @@ public final class TileViewer extends FreeColClientHolder {
             if (magnitude <= 0) {
                 continue;
             }
+            return true;
+        }
+        return false;
+    }
+    
+    private void drawRiverMouth(Graphics2D g2d, Tile tile, long ticks) {
+        for (Direction direction : Direction.longSides) {
+            Tile borderingTile = tile.getNeighbourOrNull(direction);
+            if (borderingTile == null || tile.isLand() || !borderingTile.isLand() || !tile.isExplored()) {
+                continue;
+            }
             
+            final TileImprovement river = borderingTile.getRiver();
+            if (river == null) {
+                continue;
+            }
+            
+            final Direction reverseDirection = direction.getReverseDirection();
+            final int magnitude = river.getRiverConnection(reverseDirection);
+            if (magnitude <= 0) {
+                continue;
+            }
+
+            /*
             final BufferedImage ri = this.lib.getRiverMouthImage(direction, magnitude, tile.getX(), tile.getY());
             g2d.drawImage(ri, 0, 0, null);
+            */
+
+            final BufferedImage riverDelta = lib.getAnimatedScaledRiverDeltaTerrainImage(direction, ticks);
+            g2d.drawImage(riverDelta, 0, 0, null);
         }
     }
 
@@ -663,16 +708,16 @@ public final class TileViewer extends FreeColClientHolder {
                                  BufferedImage overlayImage) {
         // ATTENTION: we assume that only overlays and forests
         // might be taller than a tile.
-        BufferedImage image = new BufferedImage(this.tileWidth,
-            this.tileHeight+this.halfHeight, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g1 = (Graphics2D)image.getGraphics();
-        g1.translate(0, this.halfHeight);
-        // layer additions and improvements according to zIndex
-        List<TileItem> tileItems = tile.getCompleteItems();
+        
+         // layer additions and improvements according to zIndex
+        List<TileItem> tileItems = new ArrayList<>(tile.getCompleteItems());
+        Collections.sort(tileItems, (a, b) -> {
+            return Integer.valueOf(a.getZIndex()).compareTo(b.getZIndex());
+        });
         int startIndex = 0;
         for (int index = startIndex; index < tileItems.size(); index++) {
             if (tileItems.get(index).getZIndex() < Tile.OVERLAY_ZINDEX) {
-                displayTileItem(g1, tile, tileItems.get(index));
+                displayTileItem(g2d, tile, rop, tileItems.get(index));
                 startIndex = index + 1;
             } else {
                 startIndex = index;
@@ -681,12 +726,12 @@ public final class TileViewer extends FreeColClientHolder {
         }
         // Tile Overlays (eg. hills and mountains)
         if (overlayImage != null) {
-            g1.drawImage(overlayImage,
-                0, (this.tileHeight - overlayImage.getHeight()), null);
+            g2d.drawImage(overlayImage, rop,
+                0, (this.tileHeight - overlayImage.getHeight()));
         }
         for (int index = startIndex; index < tileItems.size(); index++) {
             if (tileItems.get(index).getZIndex() < Tile.FOREST_ZINDEX) {
-                displayTileItem(g1, tile, tileItems.get(index));
+                displayTileItem(g2d, tile, rop, tileItems.get(index));
                 startIndex = index + 1;
             } else {
                 startIndex = index;
@@ -697,17 +742,44 @@ public final class TileViewer extends FreeColClientHolder {
         if (tile.isForested()) {
             BufferedImage forestImage = this.lib.getScaledForestImage(tile.getType(),
                 tile.getRiverStyle());
-            g1.drawImage(forestImage,
-                0, (this.tileHeight - forestImage.getHeight()), null);
+            g2d.drawImage(forestImage, rop, 0, (this.tileHeight - forestImage.getHeight()));
+        } else if (getClientOptions().getRange(ClientOptions.GRAPHICS_QUALITY) >= ClientOptions.GRAPHICS_QUALITY_HIGH) {
+            drawForestCornerImages(tile, g2d);
         }
-
+        
         // draw all remaining items
         for (TileItem ti : tileItems.subList(startIndex, tileItems.size())) {
-            displayTileItem(g1, tile, ti);
+            displayTileItem(g2d, tile, rop, ti);
         }
+    }
 
-        g1.dispose();
-        g2d.drawImage(image, rop, 0, -this.halfHeight);
+
+    private void drawForestCornerImages(Tile tile, Graphics2D g1) {
+        drawForestCornerImageFor(tile, g1, Direction.NW, Direction.NE, Direction.N);
+        drawForestCornerImageFor(tile, g1, Direction.SW, Direction.SE, Direction.S);
+        drawForestCornerImageFor(tile, g1, Direction.NE, Direction.SE, Direction.E);
+        drawForestCornerImageFor(tile, g1, Direction.NW, Direction.SW, Direction.W);
+    }
+
+    private void drawForestCornerImageFor(Tile tile, Graphics2D g1, Direction d1, Direction d2, Direction d3) {
+        if (tile.hasRiver()) {
+            return;
+        }
+        final Tile tile1 = tile.getNeighbourOrNull(d1);
+        if (tile1 == null || !tile1.isForested()) {
+            return;
+        }
+        final Tile tile2 = tile.getNeighbourOrNull(d2);
+        if (hasSameForestedTileType(tile1, tile2)) {
+            final BufferedImage forestCornerImage = lib.getForestCornerImage(tile1.getType(), d3);
+            if (forestCornerImage != null) {
+                g1.drawImage(forestCornerImage, 0, (this.tileHeight - forestCornerImage.getHeight()), null);
+            }
+        }
+    }
+    
+    private boolean hasSameForestedTileType(Tile t1, Tile t2) {
+        return t1 != null && t2 != null && t1.isForested() && t1.getType() == t2.getType();
     }
 
     /**
@@ -715,33 +787,36 @@ public final class TileViewer extends FreeColClientHolder {
      *
      * @param g2d The {@code Graphics} to draw to.
      * @param tile The {@code Tile} to draw from.
+     * @param rop An optional RescaleOp for fog of war.
      * @param item The {@code TileItem} to draw.
      */
-    private void displayTileItem(Graphics2D g2d, Tile tile, TileItem item) {
+    private void displayTileItem(Graphics2D g2d, Tile tile, RescaleOp rop, TileItem item) {
         if (item instanceof TileImprovement) {
             TileImprovement ti = (TileImprovement)item;
             if (!ti.isComplete()) return;
             if (ti.isRoad()) {
-                this.rp.displayRoad(g2d, tile);
+                this.rp.displayRoad(g2d, tile, rop);
             } else if (ti.isRiver()) {
-                TileImprovementStyle style = ti.getStyle();
-                if (style == null) { // This is all too common with broken maps
-                    logger.severe("Null river style for " + tile);
-                } else {
-                    BufferedImage img = this.lib.getScaledRiverImage(style);
-                    if (img != null) g2d.drawImage(img, 0, 0, null);
+                if (getClientOptions().isRiverAnimationEnabled()) {
+                    // Painted elsewhere.
+                    return;
+                }
+                final BufferedImage img = this.lib.getAnimatedScaledRiverTerrainImage(tile, 0);
+                if (img != null) {
+                    g2d.drawImage(img, rop, 0, 0);
                 }
             } else {
-                BufferedImage img
-                    = this.lib.getTileImprovementImage(ti.getType().getId());
-                if (img != null) g2d.drawImage(img, 0, 0, null);
+                BufferedImage img = this.lib.getTileImprovementImage(ti.getType().getId());
+                if (img != null) g2d.drawImage(img, rop, 0, 0);
             }
         } else if (item instanceof LostCityRumour) {
             displayCenteredImage(g2d,
-                this.lib.getScaledImage(ImageLibrary.LOST_CITY_RUMOUR));
+                this.lib.getScaledImage(ImageLibrary.LOST_CITY_RUMOUR),
+                rop);
         } else if (item instanceof Resource) {
             displayCenteredImage(g2d,
-                this.lib.getScaledResourceImage((Resource)item));
+                this.lib.getScaledResourceImage((Resource)item),
+                rop);
         }
     }
 }

@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -30,6 +30,7 @@ import java.awt.RenderingHints;
 import java.awt.Stroke;
 import java.awt.geom.GeneralPath;
 import java.awt.geom.Point2D;
+import java.awt.image.RescaleOp;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.List;
@@ -113,10 +114,11 @@ final class RoadPainter {
      *
      * @param g The {@code Graphics} to draw the road upon.
      * @param tile The {@code Tile} with the road.
+     * @param rop An optional RescaleOp for fog of war.
      */
-    void displayRoad(Graphics2D g, Tile tile) {
+    void displayRoad(Graphics2D g, Tile tile, RescaleOp rop) {
         Color oldColor = g.getColor();
-        g.setColor(ImageLibrary.getRoadColor());
+        g.setColor(ImageLibrary.getRoadColor()); // TODO: Apply rop?
         g.setStroke(roadStroke);
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                            RenderingHints.VALUE_ANTIALIAS_ON);

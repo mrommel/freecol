@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -22,6 +22,11 @@ package net.sf.freecol.common.resources;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+
+import javax.sound.sampled.AudioInputStream;
 
 import net.sf.freecol.common.sound.SoundPlayer;
 
@@ -33,26 +38,34 @@ import net.sf.freecol.common.sound.SoundPlayer;
  */
 public class AudioResource extends Resource {
 
-    private File file;
+    private final List<File> files = new ArrayList<>();;
 
-
-    public AudioResource(String primaryKey, File file) {
-        super(primaryKey);
-        this.file = file;
-    }
 
     /**
      * Do not use directly.
+     *
+     * @param cachingKey The caching key.
      * @param resourceLocator The {@code URI} used when loading this
      *      resource.
      * @exception IOException if the URI does not point to recognizable audio.
      */
-    public AudioResource(String primaryKey, URI resourceLocator) throws IOException {
-        super(primaryKey, resourceLocator);
-        File f = new File(resourceLocator);
-        this.file = (SoundPlayer.getAudioInputStream(f) != null) ? f : null;
+    public AudioResource(String cachingKey, URI resourceLocator) throws IOException {
+        super(cachingKey, resourceLocator);
+        
+        final File file = new File(resourceLocator);
+        if (!file.isDirectory()) {
+            try (final AudioInputStream ais =SoundPlayer.getAudioInputStream(file)) {
+                this.files.add(file);
+            }
+        } else {
+            final File[] candidateFiles = file.listFiles((dir, name) -> name.endsWith(".ogg") || name.endsWith(".wav"));
+            for (File f : candidateFiles) {
+                try (final AudioInputStream ais = SoundPlayer.getAudioInputStream(f)) {
+                    this.files.add(f);
+                }
+            }
+        }
     }
-
 
     /**
      * {@inheritDoc}
@@ -65,6 +78,13 @@ public class AudioResource extends Resource {
      * @return The {@code File} for this resource.
      */
     public File getAudio() {
-        return this.file;
+        if (files.isEmpty()) {
+            return null;
+        }
+        return files.get(new Random().nextInt(files.size()));
+    }
+    
+    public List<File> getAllAudio() {
+        return files;
     }
 }

@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2021  The FreeCol Team
+ *  Copyright (C) 2002-2024  The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -26,6 +26,7 @@ import java.util.Iterator;
 import java.util.List;
 
 import net.sf.freecol.common.model.Ability;
+import net.sf.freecol.common.model.AbstractGoods;
 import net.sf.freecol.common.model.Building;
 import net.sf.freecol.common.model.BuildingType;
 import net.sf.freecol.common.model.Colony;
@@ -86,7 +87,7 @@ public class ServerBuildingTest extends FreeColTestCase {
      * Creates a colony with a university and n elder statesmen
      */
     private Colony getSchoolColony(int n, SchoolLevel slevel) {
-        Colony colony = getStandardColony(n);
+        Colony colony = createStandardColony(n);
         for (Unit u : colony.getUnitList()) u.setType(elderStatesmanType);
         BuildingType type = null;
         switch (slevel) {
@@ -131,7 +132,7 @@ public class ServerBuildingTest extends FreeColTestCase {
      *
      */
     public void testExpertTeaching() {
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         // otherwise this test will crash and burn
         boolean selection = FreeColTestUtils.setStudentSelection(false);
@@ -165,7 +166,7 @@ public class ServerBuildingTest extends FreeColTestCase {
     }
 
     public void testCollege() {
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         // otherwise this test will crash and burn
         boolean selection = FreeColTestUtils.setStudentSelection(false);
@@ -191,7 +192,7 @@ public class ServerBuildingTest extends FreeColTestCase {
     }
 
     public void testUniversity() {
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         // otherwise this test will crash and burn
         boolean selection = FreeColTestUtils.setStudentSelection(false);
@@ -246,7 +247,7 @@ public class ServerBuildingTest extends FreeColTestCase {
      * out first.
      */
     public void testTrackerBug1616384() {
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         // otherwise this test will crash and burn
         boolean selection = FreeColTestUtils.setStudentSelection(false);
@@ -349,7 +350,7 @@ public class ServerBuildingTest extends FreeColTestCase {
     public void testTwoTeachersSimple() {
         boolean selection = FreeColTestUtils.setStudentSelection(false);
 
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
         Colony colony = getSchoolColony(5, SchoolLevel.UNIVERSITY);
         // prevent starvation
         colony.addGoods(foodType, 100);
@@ -407,7 +408,7 @@ public class ServerBuildingTest extends FreeColTestCase {
      */
     public void testSingleGuyTwoTeachers() {
         boolean selection = FreeColTestUtils.setStudentSelection(false);
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         Colony colony = getSchoolColony(4, SchoolLevel.UNIVERSITY);
         Building university = colony.getBuilding(universityType);
@@ -452,7 +453,7 @@ public class ServerBuildingTest extends FreeColTestCase {
      */
     public void testTwoTeachersOfSameKind() {
         boolean selection = FreeColTestUtils.setStudentSelection(false);
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         Colony colony = getSchoolColony(4, SchoolLevel.UNIVERSITY);
         Building university = colony.getBuilding(universityType);
@@ -492,7 +493,7 @@ public class ServerBuildingTest extends FreeColTestCase {
      */
     public void testSingleGuyTwoTeachers2() {
         boolean selection = FreeColTestUtils.setStudentSelection(false);
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         Colony colony = getSchoolColony(4, SchoolLevel.UNIVERSITY);
         Building university = colony.getBuilding(universityType);
@@ -550,7 +551,7 @@ public class ServerBuildingTest extends FreeColTestCase {
      */
     public void testTeachPettyCriminals() {
         boolean selection = FreeColTestUtils.setStudentSelection(false);
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         Colony colony = getSchoolColony(4, SchoolLevel.UNIVERSITY);
         Building university = colony.getBuilding(universityType);
@@ -582,7 +583,7 @@ public class ServerBuildingTest extends FreeColTestCase {
      */
     public void testTeachPettyCriminalsByMaster() {
         boolean selection = FreeColTestUtils.setStudentSelection(false);
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         Colony colony = getSchoolColony(4, SchoolLevel.UNIVERSITY);
         Building university = colony.getBuilding(universityType);
@@ -611,7 +612,7 @@ public class ServerBuildingTest extends FreeColTestCase {
      */
     public void testTeachIndenturedServants() {
         boolean selection = FreeColTestUtils.setStudentSelection(false);
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         Colony colony = getSchoolColony(4, SchoolLevel.UNIVERSITY);
         Building university = colony.getBuilding(universityType);
@@ -684,7 +685,7 @@ public class ServerBuildingTest extends FreeColTestCase {
      */
     public void testMoveTeacherInside() {
         boolean selection = FreeColTestUtils.setStudentSelection(false);
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         Colony colony = getSchoolColony(4, SchoolLevel.UNIVERSITY);
         // prevent starvation
@@ -778,7 +779,7 @@ public class ServerBuildingTest extends FreeColTestCase {
 
     public void testCaseTwoTeachersWithDifferentExp() {
         boolean selection = FreeColTestUtils.setStudentSelection(false);
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         Colony colony = getSchoolColony(4, SchoolLevel.UNIVERSITY);
         Building university = colony.getBuilding(universityType);
@@ -828,9 +829,9 @@ public class ServerBuildingTest extends FreeColTestCase {
      */
     public void testMoveTeacherOutside() {
         boolean selection = FreeColTestUtils.setStudentSelection(false);
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
-        Colony otherColony = getStandardColony(1, 10, 10);
+        Colony otherColony = createStandardColony(1, 10, 10);
         Colony colony = getSchoolColony(4, SchoolLevel.UNIVERSITY);
         // prevent starvation
         colony.addGoods(foodType, 100);
@@ -920,7 +921,7 @@ public class ServerBuildingTest extends FreeColTestCase {
      */
     public void testSonsOfLiberty() {
         boolean selection = FreeColTestUtils.setStudentSelection(false);
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         Colony colony = getSchoolColony(4, SchoolLevel.UNIVERSITY);
         Building university = colony.getBuilding(universityType);
@@ -952,7 +953,7 @@ public class ServerBuildingTest extends FreeColTestCase {
      */
     public void testPartTraining() {
         boolean selection = FreeColTestUtils.setStudentSelection(false);
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         Colony colony = getSchoolColony(4, SchoolLevel.UNIVERSITY);
         Building university = colony.getBuilding(universityType);
@@ -998,7 +999,7 @@ public class ServerBuildingTest extends FreeColTestCase {
      */
     public void testTeachingOrder() {
         boolean selection = FreeColTestUtils.setStudentSelection(false);
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         Colony colony = getSchoolColony(4, SchoolLevel.UNIVERSITY);
         // prevent starvation
@@ -1069,7 +1070,7 @@ public class ServerBuildingTest extends FreeColTestCase {
      */
     public void testTeachingDoublePromotion() {
         boolean selection = FreeColTestUtils.setStudentSelection(false);
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         Colony colony = getSchoolColony(4, SchoolLevel.UNIVERSITY);
         // prevent starvation
@@ -1128,7 +1129,7 @@ public class ServerBuildingTest extends FreeColTestCase {
 
     public void testColonialRegular() {
         boolean selection = FreeColTestUtils.setStudentSelection(false);
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         Colony colony = getSchoolColony(4, SchoolLevel.UNIVERSITY);
         Building university = colony.getBuilding(universityType);
@@ -1154,9 +1155,10 @@ public class ServerBuildingTest extends FreeColTestCase {
 
     public void testConcurrentUpgrade() {
         boolean selection = FreeColTestUtils.setStudentSelection(false);
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         Colony colony = getSchoolColony(2, SchoolLevel.SCHOOLHOUSE);
+        colony.addGoods(new AbstractGoods(foodType, 100));
         Building school = colony.getBuilding(schoolType);
         Iterator<Unit> units = colony.getUnitList().iterator();
 
@@ -1192,7 +1194,7 @@ public class ServerBuildingTest extends FreeColTestCase {
 
     public void testProductionBonus() {
         boolean selection = FreeColTestUtils.setStudentSelection(false);
-        Game game = ServerTestHelper.startServerGame(getTestMap(true));
+        ServerTestHelper.startServerGame(getTestMap(true));
 
         Colony colony = getSchoolColony(6, SchoolLevel.UNIVERSITY);
         Building university = colony.getBuilding(universityType);

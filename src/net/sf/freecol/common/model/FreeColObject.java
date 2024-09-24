@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2002-2022   The FreeCol Team
+ *  Copyright (C) 2002-2024   The FreeCol Team
  *
  *  This file is part of FreeCol.
  *
@@ -611,7 +611,9 @@ public abstract class FreeColObject
      * @return A set of modifiers.
      */
     public final Stream<Modifier> getModifiers() {
-        return getModifiers(null);
+        FeatureContainer fc = getFeatureContainer();
+        return (fc == null) ? Stream.<Modifier>empty()
+            : fc.getModifierValues().stream();
     }
 
     /**
@@ -1206,7 +1208,7 @@ public abstract class FreeColObject
      */
     public final void toXMLPartial(FreeColXMLWriter xw,
                                    String[] fields) throws XMLStreamException {
-        final Class theClass = getClass();
+        final Class<?> theClass = getClass();
 
         xw.writeStartElement(getXMLTagName());
 
@@ -1238,7 +1240,7 @@ public abstract class FreeColObject
      */
     public final void toXMLPartial(FreeColXMLWriter xw,
                                    List<String> fields) throws XMLStreamException {
-        final Class theClass = getClass();
+        final Class<?> theClass = getClass();
 
         try {
             xw.writeStartElement(getXMLTagName());
@@ -1274,10 +1276,24 @@ public abstract class FreeColObject
         if (xr.hasAttribute(PARTIAL_ATTRIBUTE_TAG)) {
             readFromXMLPartial(xr);
         } else {
-            readAttributes(xr);
-
+            if (xr.shouldClearContainers()) {
+                clearContainers(xr);
+            }
+            if (xr.shouldReadAttributes()) {
+                readAttributes(xr);
+            }
             readChildren(xr);
         }
+    }
+    
+    /**
+     * Clears containers before reading the object.
+     * 
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @throws XMLStreamException if there is a problem reading the stream.
+     */
+    protected void clearContainers(FreeColXMLReader xr) throws XMLStreamException {
+
     }
 
     /**
@@ -1340,7 +1356,7 @@ public abstract class FreeColObject
      *      during parsing.
      */
     public final void readFromXMLPartial(FreeColXMLReader xr) throws XMLStreamException {
-        final Class theClass = getClass();
+        final Class<?> theClass = getClass();
         final String tag = xr.getLocalName();
         int n = xr.getAttributeCount();
 
